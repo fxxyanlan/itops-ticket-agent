@@ -1,171 +1,301 @@
 # IT 运维智能工单自动处理 Agent
 
-基于 **LangGraph 状态机 + DeepSeek 原生 Function Calling** 的 IT 运维工单自动闭环 Demo。
+> 让 IT 工单「自己走完流程」——用自然语言描述故障，系统自动完成解析、分类、检索、决策与闭环。
 
-员工用自然语言提交故障工单，Agent 自动完成：**工单解析 → 意图/故障分类 → 多工具调用 → 分支决策（自动闭环 / 转人工）→ 状态流转落库 → 生成方案或派单通知**。
+本项目的核心是 **业务流程编排（LangGraph 状态机）+ 大模型原生工具调用（Function Calling）+ 工单状态流转**，而非知识库问答。它用一条可解释、可观测、可离线运行的状态机，把「员工报障」到「问题闭环」的全过程自动化：能复用历史方案的自动解决，需要人处理的自动派单。
 
-> 注意：本项目的核心是 **业务流程编排（状态机）+ 原生工具调用 + 工单状态流转**，不是知识库问答。
-> 编排框架只用了 LangGraph，未使用 CrewAI / Agno / AutoGen 等重型多 Agent 框架。
+编排框架仅使用 **LangGraph**，未引入 CrewAI / Agno / AutoGen 等重型多 Agent 框架，整体轻量、易读、易扩展。
 
 ---
 
-## 1. 功能特性
+## 目录
+
+1. [项目简介](#1-项目简介)
+2. [核心价值与亮点](#2-核心价值与亮点)
+3. [功能特性](#3-功能特性)
+4. [系统架构](#4-系统架构)
+5. [处理流程与状态机](#5-处理流程与状态机)
+6. [核心功能说明](#6-核心功能说明)
+7. [技术规格](#7-技术规格)
+8. [快速开始](#8-快速开始)
+9. [使用指南](#9-使用指南)
+10. [配置项](#10-配置项)
+11. [项目结构](#11-项目结构)
+12. [测试与验收](#12-测试与验收)
+13. [部署到 GitHub](#13-部署到-github)
+14. [文档索引](#14-文档索引)
+
+---
+
+## 1. 项目简介
+
+### 1.1 要解决的问题
+
+传统 IT 工单处理高度依赖人工：员工用文字描述故障，运维人员再逐条判断、翻找历史处理记录、确认设备信息、决定能否自助解决。效率低、口径不一、经验难以沉淀。
+
+### 1.2 我们提供什么
+
+系统接收员工的自然语言工单，由大模型驱动、由状态机编排，自动完成一整条闭环：
+
+```
+工单解析 → 意图/故障分类 → 多工具调用（检索历史方案 + 查询设备资产 + 更新状态）
+        → 分支决策 → 自动生成解决方案 或 自动派单通知 → 状态落库
+```
+
+### 1.3 适用对象
+
+- **企业 IT 运维团队**：希望降低重复性工单的人力消耗，并沉淀可复用方案。
+- **技术评审与学习者**：希望参考一条完整、可运行的「LangGraph 状态机 + 原生 Function Calling」工程实践。
+
+---
+
+## 2. 核心价值与亮点
+
+| 价值 | 说明 |
+|---|---|
+| **真正的业务闭环，而非问答** | 输出的是工单状态变更与可执行的解决方案/派单通知，而不是一段聊天回复 |
+| **决策可解释、结果可复现** | 分流规则由代码确定性裁决（P0 / 高危类型 / 分类结果 / 相似度阈值），模型不"拍脑袋"决定去向，每条决策都附带原因 |
+| **原生工具调用** | 3 个业务工具由模型自主决策调用，而非硬编码 `if-else`，贴近真实 Agent 形态 |
+| **开箱即用、离线可跑** | 无需 API Key 即可用离线模式完整演示全流程，降低体验与评审门槛 |
+| **全链路可观测** | 每一步 Agent 思考与每次工具调用的入参出参都落库并可视化，便于审计与调优 |
+| **轻量可控** | 仅用 LangGraph，无重型多 Agent 框架，依赖少、易读、易二次开发 |
+
+---
+
+## 3. 功能特性
 
 | 能力 | 说明 |
 |---|---|
-| 工单解析 | LLM 结构化抽取标题、故障类型、紧急等级、设备编号、联系方式 |
+| 工单解析 | 从自然语言结构化抽取：标题、故障类型、紧急等级、设备编号、联系方式 |
 | 意图分类 | 区分「可自动解决」与「必须人工处理」 |
-| 原生 Function Calling | 3 个业务工具由模型自主决策调用（非硬编码 if-else） |
+| 原生 Function Calling | 模型自主调用 3 个业务工具，支持多轮 ReAct 循环 |
 | 条件边分支 | 2 处 LangGraph 条件边：工具循环路由 + 自动/人工分流 |
 | 状态持久化 | 工单状态与 Agent 日志全部落 SQLite |
-| 全链路日志 | 控制台 + `logs/app.log` + DB `agent_logs`，每步可查 |
-| 离线可用 | `LLM_MODE=mock` 无需 API Key 即可完整演示 |
-| 可视化前端 | Streamlit：提交工单 / 工单列表 / Agent 处理日志 |
+| 全链路日志 | 控制台 + 滚动文件 + 数据库三通道，每个节点与工具调用可追溯 |
+| 离线可用 | 离线模式无需 API Key 即可完整演示 |
+| 可视化前端 | Streamlit 三页签：提交工单 / 工单列表 / Agent 处理日志 |
 
 ---
 
-## 2. 目录结构
+## 4. 系统架构
 
+系统自下而上分为展示层、服务层、编排层与数据层，各层职责清晰、通过标准接口解耦。
+
+```mermaid
+flowchart TB
+    subgraph Client["展示层"]
+        FE["Streamlit 前端 :8501<br/>提交工单 · 工单列表 · Agent 日志"]
+    end
+    subgraph Server["服务层"]
+        API["FastAPI 后端 :8000<br/>REST API"]
+        SVC["业务服务<br/>工单 / 日志 / Agent 调度"]
+    end
+    subgraph Agent["编排层"]
+        G["LangGraph 状态机<br/>8 个节点 + 条件边"]
+        LLM["DeepSeek 大模型<br/>原生 Function Calling"]
+        TOOLS["工具层<br/>历史检索 · 设备资产 · 状态更新"]
+    end
+    subgraph Data["数据层"]
+        DB[("SQLite<br/>tickets / agent_logs<br/>device_assets / engineers")]
+    end
+
+    FE -->|HTTP| API --> SVC --> G
+    G <-->|工具声明 / tool_calls| LLM
+    G --> TOOLS
+    TOOLS --> DB
+    SVC --> DB
 ```
-demo/
-├── README.md                   # 本文档
-├── 使用说明.md                 # 使用手册（功能/操作流程/FAQ/关键功能点详解）
-├── spec.md / tasks.md / checklist.md   # 规格、任务拆解、验收清单
-├── requirements.txt
-├── .env.example                # 环境变量模板
-├── run.ps1                     # 一键启动（后端 + 前端）
-├── run_backend.ps1 / run_frontend.ps1  # 分启动
-├── app/
-│   ├── config.py               # 配置（pydantic-settings）
-│   ├── constants.py            # 状态/故障类型/高危类型等常量
-│   ├── logging_config.py       # 日志系统（控制台 + 滚动文件）
-│   ├── main.py                 # FastAPI 入口
-│   ├── db/
-│   │   ├── base.py             # engine / session / init_db
-│   │   ├── models.py           # Ticket / AgentLog / DeviceAsset / Engineer
-│   │   └── seed.py             # 历史工单 + 设备 + 工程师种子数据
-│   ├── schemas/ticket.py       # Pydantic 请求/响应模型
-│   ├── llm/
-│   │   ├── client.py           # DeepSeek 客户端（real / mock 双模式）
-│   │   ├── schemas.py          # 结构化输出模型 + JSON 提取
-│   │   └── mock.py             # 离线规则实现
-│   ├── tools/                  # ★ 供模型调用的 3 个工具
-│   │   ├── registry.py         # 工具注册表 + TOOL_SPECS + dispatch()
-│   │   ├── ticket_search.py    # 工具1：检索历史同类型工单方案
-│   │   ├── asset_query.py      # 工具2：查询设备资产
-│   │   └── ticket_status.py    # 工具3：更新工单状态
-│   ├── agent/                  # ★ LangGraph 状态机
-│   │   ├── state.py            # TicketState 定义
-│   │   ├── nodes.py            # 8 个节点实现
-│   │   ├── routing.py          # 条件边路由 + 分支判定规则
-│   │   └── graph.py            # 图组装（StateGraph + 条件边）
-│   ├── services/
-│   │   ├── ticket_service.py   # 工单 CRUD / 状态流转 / 派单
-│   │   ├── log_service.py      # Agent 日志落库
-│   │   └── agent_runner.py     # 组初始状态 → 调图 → 回写结果
-│   └── api/routes.py           # REST 接口
-├── frontend/streamlit_app.py   # Streamlit 三 Tab 页面（不能命名为 app.py，会与 app 包冲突）
-├── scripts/
-│   ├── init_db.py              # 建表 + 种子数据
-│   ├── test_tools.py           # 工具层自测
-│   ├── test_graph.py           # 状态机逐节点追踪
-│   ├── demo_test.py            # 5 条样例端到端验收
-│   └── samples.py              # 测试样例定义
-├── data/                       # SQLite 数据库文件
-└── logs/                       # 运行日志
-```
+
+| 层 | 组件 | 职责 |
+|---|---|---|
+| 展示层 | Streamlit | 提交工单、查看列表与详情、可视化 Agent 处理日志 |
+| 服务层 | FastAPI + 业务服务 | 提供 REST 接口，负责工单 CRUD、状态流转、日志落库与 Agent 调度 |
+| 编排层 | LangGraph + DeepSeek + 工具层 | 状态机编排、模型推理、原生工具调用与分支决策 |
+| 数据层 | SQLite | 持久化工单、Agent 日志、设备资产与工程师信息 |
 
 ---
 
-## 3. 快速开始（Trae 内置终端）
+## 5. 处理流程与状态机
+
+### 5.1 编排流程
+
+状态机共 8 个节点，通过 2 处条件边实现「工具循环」与「自动/人工分流」。
+
+```mermaid
+flowchart TD
+    START([START]) --> parse["工单解析"]
+    parse --> classify["意图 & 故障分类"]
+    classify --> agent["Agent 决策<br/>携带工具声明调用模型"]
+    agent -->|原生 tool_calls| tools["执行工具<br/>检索 / 资产 / 状态"]
+    tools --> agent
+    agent -->|条件边 ①| route{"分流判定"}
+    route -->|缺检索证据| evidence["证据补齐（确定性兜底）"]
+    route -->|可自动闭环| auto["自动闭环"]
+    route -->|需人工处理| esc["转人工"]
+    evidence -->|条件边 ②| auto
+    evidence -->|条件边 ②| esc
+    auto --> fin["收尾"]
+    esc --> fin
+    fin --> END([END])
+```
+
+| 节点 | 职责 |
+|---|---|
+| `parse_ticket` | 大模型抽取工单字段并回写 |
+| `classify` | 判定可自动解决 / 必须人工 |
+| `agent` | 携带工具声明调用模型，解析原生 `tool_calls` |
+| `execute_tools` | 执行工具，并将结果回灌为 `tool` 消息 |
+| `gather_evidence` | 模型漏调检索工具时的确定性兜底 |
+| `auto_resolve` | 生成解决步骤 → 状态「已解决」+ 标记自动闭环 |
+| `escalate_human` | 按故障类型分派工程师 → 状态「转人工」+ 生成通知 |
+| `finalize` | 收尾并汇总日志 |
+
+### 5.2 工单状态流转
+
+```mermaid
+stateDiagram-v2
+    [*] --> 新建
+    新建 --> 处理中
+    处理中 --> 已解决: 自动闭环
+    处理中 --> 转人工: 分派工程师
+```
+
+### 5.3 分流判定规则
+
+命中以下**任一**条件即 **转人工**；否则 **自动闭环**。判定由代码确定性执行，并记录在 `decision_reason` 中。
+
+| # | 条件 |
+|---|---|
+| 1 | 紧急等级为 `P0` |
+| 2 | 故障类型属于高危：`服务器 / 数据库 / 网络核心 / 安全事件` |
+| 3 | 模型分类判定 `auto_resolvable = false` |
+| 4 | 历史方案最高匹配度 `< MATCH_THRESHOLD`（默认 `0.42`） |
+
+---
+
+## 6. 核心功能说明
+
+### 6.1 工单解析
+
+模型从自然语言中抽取结构化字段（标题、故障类型、紧急等级、设备编号、联系方式），并将故障类型约束到系统预设的 10 类枚举：
+`打印机 / 账号权限 / 网络 / 硬件 / 软件 / 服务器 / 邮箱 / 数据库 / 安全事件 / 其他`。
+
+### 6.2 意图与故障分类
+
+判断工单是否具备自动解决条件，输出分类结论与理由，作为分流判定的输入之一。
+
+### 6.3 工具调用（原生 Function Calling）
+
+| 工具 | 作用 | 数据源 |
+|---|---|---|
+| `search_similar_tickets` | 按故障类型与描述检索历史已解决工单，返回最相似方案与匹配度 | `tickets` 中 `status='已解决'` 的记录 |
+| `get_device_asset` | 按设备编号查询型号、系统、IP、位置、责任人、保修与健康状态 | `device_assets` |
+| `update_ticket_status` | 更新工单状态（新建/处理中/已解决/转人工）并追加备注 | `tickets` + `agent_logs` |
+
+工具声明集中定义于 [registry.py](app/tools/registry.py)，实现位于 `app/tools/`。
+
+### 6.4 分支决策与结果产出
+
+- **自动闭环**：匹配到成熟方案 → 自动生成解决步骤并回复，工单标记为「已解决」。
+- **转人工**：无匹配方案或高危/P0 → 自动分派对应工程师，生成通知消息，工单标记为「转人工」。
+
+### 6.5 状态持久化与日志
+
+- 工单状态与结果持久化到 SQLite，前端与接口均可查询。
+- 每个节点与每次工具调用的入参出参均落库，可在前端「Agent 处理日志」页签逐条查看。
+
+---
+
+## 7. 技术规格
+
+| 维度 | 选型 |
+|---|---|
+| 语言 | Python 3.13 |
+| 后端框架 | FastAPI（Uvicorn 提供服务） |
+| Agent 编排 | LangGraph（`StateGraph` + 条件边 + ReAct 循环） |
+| 大模型 | DeepSeek（OpenAI 兼容接口，原生 Function Calling） |
+| 数据访问 | SQLAlchemy 2.x |
+| 数据校验 | Pydantic v2 / pydantic-settings |
+| 数据库 | SQLite |
+| 前端 | Streamlit |
+| 日志 | 标准 logging：控制台 + 滚动文件 + 数据库 |
+
+**数据模型（4 张表）**
+
+| 表 | 说明 |
+|---|---|
+| `tickets` | 工单主表：描述、类型、等级、设备、状态、处理模式、解决方案、派单人、决策原因等 |
+| `agent_logs` | Agent 处理日志：所属工单、节点、级别、摘要、JSON 细节 |
+| `device_assets` | 设备资产：编号、主机名、类型、系统、IP、位置、责任人、保修、健康状态 |
+| `engineers` | 工程师：专长、级别、联系方式、在手工单数、平均处理时长 |
+
+---
+
+## 8. 快速开始
+
+### 8.1 环境要求
+
+| 项 | 要求 |
+|---|---|
+| 操作系统 | Windows 10/11（提供 PowerShell 脚本） |
+| Python | 3.13（`py` 启动器可用） |
+| 端口 | `8000`（后端）、`8501`（前端）空闲 |
+| DeepSeek API Key | 可选；未配置时自动使用离线模式 |
+| 网络 | 首次安装依赖需可访问 PyPI（或国内镜像） |
+
+### 8.2 一键启动（推荐）
 
 ```powershell
-# 一键启动（推荐）：自动完成 虚拟环境 → 依赖安装 → .env → 建库 → 起后端(8000) → 起前端(8501)
 .\run.ps1
 ```
 
-`run.ps1` 幂等：仅在缺失时自动创建虚拟环境、安装依赖、生成 `.env`；数据库初始化可反复执行。
-启动后自动打开浏览器；按 `Ctrl+C` 停止前端，脚本会**同时关闭后端**。
-如需真实大模型，编辑 `.env` 填入 `DEEPSEEK_API_KEY` 后重新运行（`LLM_MODE=auto`：无 Key 时自动走离线 mock）。
-日志：后端 `logs\backend.out.log` / `logs\backend.err.log`，应用 `logs\app.log`。
+脚本会幂等地自动完成：创建虚拟环境 → 安装依赖 → 生成 `.env` → 初始化数据库 → 启动后端（8000）→ 启动前端（8501）→ 打开浏览器。按 `Ctrl+C` 停止前端时，脚本会同时关闭后端。
 
-手动分步（等价，供排障）：
+### 8.3 手动安装（可选）
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env      # 如需真实模型，编辑该文件填入 DEEPSEEK_API_KEY
+Copy-Item .env.example .env
 .\.venv\Scripts\python.exe scripts\init_db.py
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 .\.venv\Scripts\python.exe -m streamlit run frontend\streamlit_app.py --server.port 8501
 ```
 
-访问：
-
-- 前端页面：http://127.0.0.1:8501
-- 后端接口文档：http://127.0.0.1:8000/docs
-
-> 若 PowerShell 禁止执行脚本，先执行：
-> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
-> 或直接用两条命令分别启动：
-> `py -m uvicorn app.main:app --port 8000` 与 `py -m streamlit run frontend/streamlit_app.py --server.port 8501`
-
-### 只跑后端 / 只跑前端
+### 8.4 单独启动服务
 
 ```powershell
-.\run_backend.ps1     # http://127.0.0.1:8000/docs
-.\run_frontend.ps1    # http://127.0.0.1:8501
+.\run_backend.ps1     # 仅后端：http://127.0.0.1:8000/docs
+.\run_frontend.ps1    # 仅前端：http://127.0.0.1:8501
 ```
 
----
+### 8.5 访问地址
 
-## 4. LangGraph 状态机
-
-```
-START → parse_ticket → classify → agent
-agent ──(有 tool_calls)──► execute_tools ──► agent        # ReAct 循环（≤6 轮）
-agent ──(条件边1 route_after_agent)──┬─► gather_evidence ──(条件边2)──┐
-                                     ├─► auto_resolve   ────────────┴─► finalize → END
-                                     └─► escalate_human ──────────────► finalize → END
-```
-
-| 节点 | 职责 |
+| 服务 | 地址 |
 |---|---|
-| `parse_ticket` | LLM 抽取工单字段并回写 |
-| `classify` | 判定可自动解决 / 必须人工 |
-| `agent` | 携带工具声明调用模型，解析原生 `tool_calls` |
-| `execute_tools` | 执行工具并把结果回灌为 `tool` 消息 |
-| `gather_evidence` | 模型漏调检索工具时的确定性兜底 |
-| `auto_resolve` | 生成解决步骤 → 状态「已解决」+ 标记自动闭环 |
-| `escalate_human` | 按故障类型分派工程师 → 状态「转人工」+ 生成通知 |
-| `finalize` | 收尾汇总日志 |
+| 前端页面 | http://127.0.0.1:8501 |
+| 接口文档（Swagger） | http://127.0.0.1:8000/docs |
+| 健康检查 | http://127.0.0.1:8000/api/health |
 
-### 分支判定规则（代码确定性实现，保证可解释）
+### 8.6 启用真实大模型（可选）
 
-命中**任一**条件即 **转人工**：
-
-1. 紧急等级为 `P0`；
-2. 故障类型属于高危：`服务器 / 数据库 / 网络核心 / 安全事件`；
-3. 模型分类判定 `auto_resolvable = false`；
-4. 历史方案最高匹配度 `< MATCH_THRESHOLD`（默认 `0.42`）。
-
-否则 → **自动闭环**。`decision_reason` 字段会记录命中的具体原因。
+编辑 `.env` 填入 `DEEPSEEK_API_KEY` 即可（`LLM_MODE=auto` 会在检测到 Key 时使用真实模型，否则回退离线模式）。
 
 ---
 
-## 5. 三个工具（原生 Function Calling）
+## 9. 使用指南
 
-| 工具 | 作用 | 数据源 |
-|---|---|---|
-| `search_similar_tickets` | 按故障类型 + 描述检索历史已解决工单，返回 top-3 与最高匹配度 | `tickets` 表中 `status='已解决'` 的记录 |
-| `get_device_asset` | 按设备编号查询型号/系统/IP/位置/责任人/保修/健康状态 | `device_assets` 表 |
-| `update_ticket_status` | 更新工单状态（新建/处理中/已解决/转人工）并追加备注 | `tickets` 表 + `agent_logs` |
+### 9.1 前端操作
 
-声明集中定义在 [registry.py](app/tools/registry.py)，实现在 `app/tools/*.py`。
+| 页签 | 功能 |
+|---|---|
+| 📝 提交工单 | 输入自然语言故障描述（可选填联系方式、设备编号），提交后展示结果卡片：工单号、状态、类型、等级、处理模式、匹配度、决策原因、解决方案或派单通知 |
+| 📋 工单列表 | 按状态筛选（全部 / 新建 / 处理中 / 已解决 / 转人工），查看列表与单条详情 |
+| 🧠 Agent 处理日志 | 按工单查看时间线日志，展示每个节点与每次工具调用，可展开查看 JSON 细节 |
 
----
+### 9.2 REST 接口
 
-## 6. REST 接口
+统一响应体：`{"code": 0, "message": "ok", "data": ...}`
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -175,16 +305,72 @@ agent ──(条件边1 route_after_agent)──┬─► gather_evidence ──
 | GET | `/api/tickets/{id}/logs` | 该工单的 Agent 处理日志 |
 | POST | `/api/tickets/{id}/rerun` | 重新触发 Agent |
 | GET | `/api/devices` | 设备资产列表 |
-| GET | `/api/health` | 健康检查（LLM 模式 / DB 连通性） |
+| GET | `/api/health` | 健康检查（LLM 模式 / 数据库连通性） |
 
-统一响应体：`{"code": 0, "message": "ok", "data": ...}`。
+### 9.3 调用示例
+
+```powershell
+curl -X POST http://127.0.0.1:8000/api/tickets `
+  -H "Content-Type: application/json" `
+  -d '{\"description\": \"我的打印机 PC-1024 打印一直提示脱机，重启打印服务也不行\", \"user_contact\": \"张小明\"}'
+```
 
 ---
 
-## 7. 测试样例
+## 10. 配置项（`.env`）
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek API Key（离线模式下可留空） |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容接口地址 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型名称 |
+| `LLM_MODE` | `auto` | `auto`（有 Key 用真实，否则离线）/ `real` / `mock` |
+| `LLM_TIMEOUT` | `60` | 单次模型调用超时（秒） |
+| `DATABASE_URL` | `sqlite:///./data/itops.db` | 数据库连接串 |
+| `MATCH_THRESHOLD` | `0.42` | 历史方案相似度阈值，低于该值转人工 |
+| `MAX_ITERATIONS` | `6` | 单工单最大工具循环轮数 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
+| `BACKEND_URL` | `http://127.0.0.1:8000` | 前端访问的后端地址 |
+
+> `.env` 含敏感信息，已在 `.gitignore` 中排除，请勿提交到版本库。
+
+---
+
+## 11. 项目结构
+
+```
+demo/
+├── README.md                   # 项目说明（本文档）
+├── 使用说明.md                 # 使用者手册（功能 / 操作 / 配置 / 故障排查）
+├── spec.md / tasks.md / checklist.md   # 设计规格 / 任务拆解 / 验收清单
+├── requirements.txt
+├── .env.example                # 环境变量模板
+├── run.ps1                     # 一键启动（后端 + 前端）
+├── run_backend.ps1 / run_frontend.ps1  # 单独启动
+├── app/
+│   ├── config.py               # 配置（pydantic-settings）
+│   ├── constants.py            # 状态 / 故障类型 / 高危类型等常量
+│   ├── logging_config.py       # 日志系统（控制台 + 滚动文件）
+│   ├── main.py                 # FastAPI 入口
+│   ├── db/                     # engine / 模型 / 种子数据
+│   ├── schemas/                # 请求与响应模型
+│   ├── llm/                    # 大模型客户端（真实 / 离线双模式）
+│   ├── tools/                  # 供模型调用的 3 个工具
+│   ├── agent/                  # LangGraph 状态机（state / nodes / routing / graph）
+│   ├── services/               # 工单服务 / 日志服务 / Agent 调度
+│   └── api/routes.py           # REST 接口
+├── frontend/streamlit_app.py   # Streamlit 三页签页面
+├── scripts/                    # 初始化数据库 / 测试与验收脚本
+├── data/                       # SQLite 数据库文件
+└── logs/                       # 运行日志
+```
+
+---
+
+## 12. 测试与验收
 
 ```powershell
-# 5 条样例端到端验收（进程内直接执行，无需启动服务）
+# 5 条样例端到端验收（进程内执行，无需启动服务）
 .\.venv\Scripts\python.exe scripts\demo_test.py
 
 # 通过已启动的后端提交
@@ -206,159 +392,41 @@ agent ──(条件边1 route_after_agent)──┬─► gather_evidence ──
 | 4 | 我忘记 VPN 密码了，需要重置 | 已解决 / 自动闭环 |
 | 5 | 会议室投影仪没信号，设备编号 PJ-03 | 转人工（匹配度不足） |
 
-### 用 curl 单测
+> 验收明细与实测结果见 [checklist.md](checklist.md) 与 [spec.md](spec.md)。
+
+---
+
+## 13. 部署到 GitHub
 
 ```powershell
-curl -X POST http://127.0.0.1:8000/api/tickets `
-  -H "Content-Type: application/json" `
-  -d '{\"description\": \"我的打印机 PC-1024 打印一直提示脱机，重启打印服务也不行\", \"user_contact\": \"张小明\"}'
-```
-
----
-
-## 8. 配置项（.env）
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | 空 | DeepSeek API Key（mock 模式下可留空） |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | OpenAI 兼容地址 |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | 模型名 |
-| `LLM_MODE` | `auto` | `auto`（有 Key 走真实，否则 mock）/ `real` / `mock` |
-| `DATABASE_URL` | `sqlite:///./data/itops.db` | 数据库连接串 |
-| `MATCH_THRESHOLD` | `0.42` | 历史方案相似度阈值，低于则转人工 |
-| `MAX_ITERATIONS` | `6` | 单工单最大工具循环轮数 |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
-| `BACKEND_URL` | `http://127.0.0.1:8000` | 前端访问的后端地址 |
-
----
-
-## 9. 日志与可观测
-
-- **控制台**：实时打印每个节点与工具调用，便于观察 Agent 思考过程。
-- **文件**：`logs/app.log`，5MB × 3 滚动。
-- **数据库**：`agent_logs` 表按 `ticket_id` 记录每步（节点名、级别、摘要、JSON 细节），前端「Agent 处理日志」Tab 可视化。
-
-日志示例：
-
-```
-2026-10-04 10:20:31 | INFO    | itops.agent.nodes | [ticket#1] [工单解析] 解析完成：类型=打印机｜等级=P2｜设备=PC-1024
-2026-10-04 10:20:33 | INFO    | itops.agent.nodes | [ticket#1] [Agent决策] 第 1 轮决策：调用工具 [search_similar_tickets、get_device_asset]
-2026-10-04 10:20:33 | INFO    | itops.agent.nodes | [ticket#1] [tool:search_similar_tickets] 检索到 3 条历史工单，最高匹配度 0.62
-2026-10-04 10:20:34 | WARN    | itops.agent.nodes | [ticket#2] [转人工] ⚠️ 转人工：状态 → 转人工｜原因：紧急等级 P0（业务中断级），必须人工立即处理
-```
-
----
-
-## 10. 常见问题（FAQ）
-
-**Q1：没有 DeepSeek API Key 能跑吗？**
-可以。`LLM_MODE=auto` 且未配置 Key 时会自动使用 `mock`（离线规则），全流程、状态流转、日志、前端均可正常演示。
-
-**Q2：真实模式下想切换模型？**
-修改 `.env` 中 `DEEPSEEK_MODEL`（如 `deepseek-chat`），重启后端即可。
-
-**Q3：为什么工单「转人工」了，明明有类似历史工单？**
-检查 `decision_reason`，常见原因：① 紧急等级 P0；② 故障类型属于高危（服务器/数据库等）；③ 相似度低于 `MATCH_THRESHOLD`。可下调 `MATCH_THRESHOLD` 或补充种子数据。
-
-**Q4：数据想重置？**
-执行 `.\.venv\Scripts\python.exe scripts\init_db.py --reset`，会清空并重建全部表与种子数据。
-
-**Q5：模型没有调用工具怎么办？**
-`gather_evidence` 节点会确定性补齐历史工单检索，保证分支判定有据；同时日志里会有 `[证据补齐]` 的 WARN 记录。
-
-**Q6：端口被占用？**
-`run.ps1` 默认 8000/8501，可改用
-`py -m uvicorn app.main:app --port 8001` 与 `py -m streamlit run frontend/streamlit_app.py --server.port 8502`，并在前端侧边栏修改后端地址。
-
-**Q7：`pip install` 很慢或超时？**
-换国内镜像：
-`.\.venv\Scripts\python.exe -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple`
-
-**Q8：运行 `.ps1` 报「无法加载文件，未对文件进行数字签名」？**
-执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` 后再运行；或直接使用 README 里的两条命令行方式。
-
-**Q9：为什么前端入口文件名是 `streamlit_app.py` 而不是 `app.py`？**
-Streamlit 会把脚本所在目录加入 `sys.path`。若命名为 `app.py`，`import app.config` 会解析到这个脚本自身而不是项目的 `app` 包，
-从而抛出 `ModuleNotFoundError: No module named 'app.config'; 'app' is not a package`。
-
----
-
-## 11. 部署到 GitHub（分步教程）
-
-### 11.0 前置检查
-
-- 已安装 Git：`git --version` 能输出版本
-- 已有 GitHub 账号
-- 确认 `.gitignore` 已排除敏感与大文件。本仓库已包含：`.venv/`、`__pycache__/`、`*.pyc`、`.env`、`data/*.db`、`logs/*.log*`、`.streamlit/`、`.pytest_cache/`
-
-### 11.1 首次发布（本地 → GitHub）
-
-**① 初始化本地仓库**
-
-```powershell
+# 1) 初始化本地仓库
 git init
 git branch -M main
-```
 
-**② 提交前安全检查（关键一步）**
-
-```powershell
+# 2) 提交前安全检查：确认 .env 等敏感文件已被忽略
 git status --short
 git check-ignore -v .env data/itops.db logs/app.log
-```
 
-> 上面 `check-ignore` 应为每个文件都输出一条忽略规则。若 `.env` **没有**被忽略，请先修正 `.gitignore` 再继续；**任何情况下都不要提交 `.env`**。
-
-**③ 暂存并提交**
-
-```powershell
+# 3) 提交
 git add .
 git commit -m "feat: IT 运维智能工单自动处理 Agent 初始版本"
-```
 
-**④ 在 GitHub 创建空仓库**
+# 4) 在 https://github.com/new 创建空仓库（不要勾选 README/.gitignore/license）
 
-1. 打开 https://github.com/new
-2. 填写仓库名（如 `itops-ticket-agent`），选择 Public / Private
-3. **不要**勾选 "Add a README / .gitignore / license"（避免与本地首次提交冲突）
-4. 点击 **Create repository**
-
-**⑤ 关联远程并推送**
-
-```powershell
-git remote add origin https://github.com/<你的用户名>/<仓库名>.git
+# 5) 关联远程并推送
+git remote add origin https://github.com/<用户名>/<仓库名>.git
 git push -u origin main
 ```
 
-**⑥ 验证**
+> **安全须知**：`.env`、`.venv/`、`data/itops.db`、`logs/` 已在 `.gitignore` 中排除，请勿提交敏感信息；GitHub 推送需使用 Personal Access Token 或 SSH 密钥。
 
-- 刷新 GitHub 仓库页面，应能看到代码与 `README.md`
-- 确认**没有**上传 `.env`、`.venv/`、`data/itops.db`、`logs/` 等文件
+---
 
-### 11.2 后续更新
+## 14. 文档索引
 
-```powershell
-git add .
-git commit -m "fix: 修复 xxx"
-git push
-```
-
-### 11.3 使用 SSH（可选，免每次输入凭据）
-
-```powershell
-ssh-keygen -t ed25519 -C "你的邮箱"
-# 将 ~/.ssh/id_ed25519.pub 的内容粘贴到 GitHub → Settings → SSH and GPG keys → New SSH key
-git remote set-url origin git@github.com:<你的用户名>/<仓库名>.git
-```
-
-### 11.4 推送认证失败排查
-
-- GitHub 自 2021 起**不再支持账号密码推送**，需使用 **PAT（Personal Access Token）** 或 **SSH**。
-- PAT 生成：GitHub → Settings → Developer settings → Personal access tokens；推送时在"密码"处粘贴 token。
-- 若 Windows 凭据管理器缓存了旧密码：控制面板 → 凭据管理器 → Windows 凭据 → 删除 `git:https://github.com`。
-
-### 11.5 密钥安全（重要）
-
-若曾误将 API Key 提交过，即使之后删除文件，**历史提交中仍可检出**。此时应：
-1. 立即到 DeepSeek 控制台**轮换（重置）该 Key**；
-2. 用 `git filter-repo` 清理历史，或删除仓库后重新按 §11.1 发布。
+| 文档 | 面向 | 内容 |
+|---|---|---|
+| [README.md](README.md) | 外部读者 / 开发者 | 项目介绍、架构、功能、规格、快速开始（本文档） |
+| [使用说明.md](使用说明.md) | 使用者 / 运维 | 前置条件、安装、配置、操作指南、故障排查、维护 |
+| [spec.md](spec.md) | 设计与评审 | 架构设计、数据模型、状态机、接口设计、验收结果 |
+| [checklist.md](checklist.md) | 验收 | 逐项验收清单与实测记录 |
