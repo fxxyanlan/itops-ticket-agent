@@ -1,0 +1,171 @@
+{
+  "label": "baseline",
+  "generated_at": "2026-10-08T20:26:19",
+  "base_url": "http://127.0.0.1:8011",
+  "concurrency": 8,
+  "environment": {
+    "status": "ok",
+    "llm_mode": "mock",
+    "model": "deepseek-chat",
+    "database": "ok",
+    "match_threshold": 0.42
+  },
+  "ticket_sample_id": 20000,
+  "summary": {
+    "total_requests": 1220,
+    "total_errors": 0,
+    "overall_error_rate": 0.0,
+    "read_endpoints": 6,
+    "read_endpoints_within_300ms_p95": 6,
+    "sla_p95_target_ms": 300.0
+  },
+  "results": [
+    {
+      "name": "健康检查",
+      "method": "GET",
+      "path": "/api/health",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 10.45,
+      "p95_ms": 19.73,
+      "p99_ms": 23.49,
+      "mean_ms": 11.58,
+      "min_ms": 7.0,
+      "max_ms": 42.89,
+      "rps": 674.34,
+      "sample_error": ""
+    },
+    {
+      "name": "工单列表(默认)",
+      "method": "GET",
+      "path": "/api/tickets?limit=100",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 32.09,
+      "p95_ms": 37.7,
+      "p99_ms": 44.46,
+      "mean_ms": 32.18,
+      "min_ms": 15.34,
+      "max_ms": 59.85,
+      "rps": 245.21,
+      "sample_error": ""
+    },
+    {
+      "name": "工单列表(按状态)",
+      "method": "GET",
+      "path": "/api/tickets?status=已解决&limit=100",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 34.97,
+      "p95_ms": 40.71,
+      "p99_ms": 44.93,
+      "mean_ms": 34.99,
+      "min_ms": 20.79,
+      "max_ms": 45.99,
+      "rps": 225.22,
+      "sample_error": ""
+    },
+    {
+      "name": "设备列表",
+      "method": "GET",
+      "path": "/api/devices?limit=200",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 43.31,
+      "p95_ms": 54.52,
+      "p99_ms": 109.44,
+      "mean_ms": 45.87,
+      "min_ms": 26.04,
+      "max_ms": 111.52,
+      "rps": 172.12,
+      "sample_error": ""
+    },
+    {
+      "name": "工单详情",
+      "method": "GET",
+      "path": "/api/tickets/20000",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 10.08,
+      "p95_ms": 15.79,
+      "p99_ms": 17.0,
+      "mean_ms": 10.54,
+      "min_ms": 5.6,
+      "max_ms": 17.38,
+      "rps": 743.56,
+      "sample_error": ""
+    },
+    {
+      "name": "工单日志",
+      "method": "GET",
+      "path": "/api/tickets/20000/logs",
+      "kind": "read",
+      "count": 200,
+      "completed": 200,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 200
+      },
+      "p50_ms": 12.96,
+      "p95_ms": 17.24,
+      "p99_ms": 18.83,
+      "mean_ms": 13.18,
+      "min_ms": 6.42,
+      "max_ms": 20.93,
+      "rps": 595.83,
+      "sample_error": ""
+    },
+    {
+      "name": "提交工单(同步跑Agent)",
+      "method": "POST",
+      "path": "/api/tickets",
+      "kind": "write_agent",
+      "count": 20,
+      "completed": 20,
+      "errors": 0,
+      "error_rate": 0.0,
+      "status_codes": {
+        "200": 20
+      },
+      "p50_ms": 3931.56,
+      "p95_ms": 11286.34,
+      "p99_ms": 12036.95,
+      "mean_ms": 5034.99,
+      "min_ms": 1046.52,
+      "max_ms": 12224.6,
+      "rps": 1.44,
+      "sample_error": ""
+    }
+  ]
+}

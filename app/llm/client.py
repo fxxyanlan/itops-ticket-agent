@@ -13,7 +13,7 @@ from functools import lru_cache
 from app.config import settings
 from app.constants import FAULT_TYPES, FAULT_TYPE_OTHER, URGENCIES, URGENCY_DEFAULT
 from app.llm import mock
-from app.llm.schemas import ClassifyResult, LLMResponse, TicketParseResult, ToolCall, extract_json
+from app.llm.schemas import ClassifyResult, LLMResponse, ReviewResult, TicketParseResult, ToolCall, extract_json
 from app.logging_config import get_logger
 
 logger = get_logger("itops.llm")
@@ -37,6 +37,14 @@ RESOLUTION_SYSTEM_PROMPT = """你是 IT 运维工程师。请依据历史工单�
 要求：使用 Markdown，先给「设备信息」与「匹配到的历史工单」，再给分步骤的「建议处理步骤」，最后附一句风险提示。不要输出多余寒暄。"""
 
 NOTIFY_SYSTEM_PROMPT = """你是 IT 运维调度助手。请为转人工的工单生成一条简洁的通知消息，包含：工单号、标题、紧急等级、故障类型、转人工原因、分派工程师及其联系方式、预计响应时长，并说明已同步到运维值班群。只输出通知正文。"""
+
+CRITIC_SYSTEM_PROMPT = """你是 IT 运维方案审核专家，负责对「自动闭环」方案做上线前自检。
+只输出 JSON：{"verdict": "pass" 或 "reject", "feedback": "审核意见(40字内)"}
+审核要点：
+- 方案步骤是否完整、可执行，且与故障类型一致；
+- 是否体现了设备信息与历史工单依据；
+- 是否存在高危操作或未提示的风险。
+全部满足返回 pass；任一不满足返回 reject，并给出可执行的修改意见。"""
 
 
 class LLMClient:
@@ -229,6 +237,39 @@ class LLMClient:
             except Exception as exc:  # noqa: BLE001
                 logger.error("模型生成通知失败，降级为模板：%s", exc)
         return mock.generate_notification(context, assignee, reason)
+
+    # ------------------------------------------------------------------ #
+    # 5) 方案审核（审核 Agent 自检）
+    # ------------------------------------------------------------------ #
+    def review_resolution(
+        self, context: dict, resolution: str, matches: list[dict], device: dict | None = None
+    ) -> ReviewResult:
+        """对自动闭环方案做交叉审核，返回 pass / reject。"""
+        if self.mode == "real":
+            try:
+                history = "、".join(f"#{m['ticket_id']}" for m in (matches or [])[:3]) or "无"
+                content = self._real_chat(
+                    [
+                        {"role": "system", "content": CRITIC_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"工单：{context.get('title')}\n故障类型：{context.get('fault_type')}\n"
+                                f"问题描述：{context.get('description')}\n设备信息：{device or '未查到'}\n"
+                                f"依据的历史工单：{history}\n待审核方案：\n{resolution or '（空）'}"
+                            ),
+                        },
+                    ],
+                    json_mode=True,
+                )
+                data = extract_json(content)
+                verdict = str(data.get("verdict") or "").strip().lower()
+                if verdict in ("pass", "reject"):
+                    return ReviewResult(verdict=verdict, feedback=str(data.get("feedback") or ""))
+                logger.warning("审核结论非法（%s），降级为规则审核", verdict)
+            except Exception as exc:  # noqa: BLE001
+                logger.error("模型审核失败，降级为规则审核：%s", exc)
+        return mock.review_resolution(context, resolution, matches, device)
 
 
 @lru_cache(maxsize=1)

@@ -34,14 +34,14 @@ URGENCIES = ["P0", "P1", "P2", "P3"]
 URGENCY_DEFAULT = "P2"
 URGENCY_CRITICAL = "P0"
 
-# ===== Agent 节点名（同时用于日志展示）=====
-NODE_PARSE = "工单解析"
-NODE_CLASSIFY = "意图&故障分类"
-NODE_AGENT = "Agent决策"
+# ===== 多 Agent 节点名（同时用于日志展示）=====
+NODE_SUPERVISOR = "调度中枢"
+NODE_INTAKE = "解析Agent"
+NODE_TRIAGE = "分类Agent"
+NODE_RESEARCH = "检索Agent"
 NODE_TOOLS = "工具调用"
-NODE_EVIDENCE = "证据补齐"
-NODE_AUTO = "自动闭环"
-NODE_HUMAN = "转人工"
+NODE_RESOLVER = "处置Agent"
+NODE_CRITIC = "审核Agent"
 NODE_FINALIZE = "收尾"
 
 # Agent 系统提示词中的工单上下文标记（mock 模式靠它读取上下文）

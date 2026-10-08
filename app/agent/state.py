@@ -1,7 +1,9 @@
-"""LangGraph 状态定义。
+"""LangGraph 状态定义（多 Agent 共享状态）。
 
 messages 使用 OpenAI 原生消息格式（dict 列表）而不是 LangChain 消息对象，
 这样可以直接喂给 DeepSeek 的 `tools` 接口，体现「原生 Function Calling」。
+
+agent_trace 记录各专职 Agent 的协作轨迹，供前端与日志观测多 Agent 协作过程。
 """
 
 import operator
@@ -40,6 +42,13 @@ class TicketState(TypedDict, total=False):
     notify_message: str | None
     final_status: str | None
 
+    # --- 多 Agent 协作（Supervisor 编排）---
+    next_agent: str | None  # 调度中枢决定的下一步 agent
+    agent_trace: Annotated[list[dict], operator.add]  # 各 Agent 的协作轨迹
+    critic_verdict: str | None  # 审核结论：pass | reject
+    critic_feedback: str | None
+    review_rounds: int  # 审核轮次（用于限制重试上限）
+
     # --- ReAct 循环控制 ---
     messages: Annotated[list[dict], operator.add]
     iterations: int
@@ -57,6 +66,11 @@ def initial_state(ticket: dict) -> TicketState:
         best_match_score=0.0,
         device_info=None,
         status_updates=[],
+        next_agent=None,
+        agent_trace=[],
+        critic_verdict=None,
+        critic_feedback=None,
+        review_rounds=0,
         messages=[],
         iterations=0,
         errors=[],
@@ -77,9 +91,12 @@ def public_snapshot(state: dict) -> dict[str, Any]:
         "decision",
         "decision_reason",
         "final_status",
+        "critic_verdict",
+        "review_rounds",
         "iterations",
     )
     snapshot = {key: state.get(key) for key in keys}
     snapshot["matched_count"] = len(state.get("matched_solutions") or [])
     snapshot["device_found"] = bool((state.get("device_info") or {}).get("found"))
+    snapshot["agent_trace"] = state.get("agent_trace") or []
     return snapshot

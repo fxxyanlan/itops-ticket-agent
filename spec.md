@@ -46,10 +46,10 @@
                            └───────────────┬───────────────────────────┘
                                            │
                         ┌──────────────────▼──────────────────┐
-                        │  LangGraph 状态机 (Agent 编排)      │
-                        │  parse → classify → agent ⟲ tools   │
-                        │            ↓ 条件边（分支路由）      │
-                        │   auto_resolve  │  escalate_human   │
+                        │  LangGraph 状态机 (Supervisor 多 Agent) │
+                        │  supervisor ⇄ 6 专职 Agent ⇄ 工具调用   │
+                        │        ↓ 2 处条件边（编排 / 工具循环）  │
+                        │  处置Agent：自动闭环 | 转人工派单       │
                         └──────────────────┬──────────────────┘
                                            │ 原生 Function Calling
                      ┌─────────────────────┼─────────────────────┐
@@ -66,13 +66,13 @@
 
 **处理时序（单次工单）**
 1. 前端 POST `/api/tickets` → 工单落库（状态=新建）。
-2. FastAPI 组装 `TicketState` → `graph.invoke()`。
-3. `parse_ticket`：LLM 结构化抽取字段并回写工单。
-4. `classify`：LLM 判定「可自动解决 / 必须人工处理」+ 原因。
-5. `agent`：LLM 携带工具 Schema，自主决定调用哪些工具（原生 Function Calling）。
+2. FastAPI 组装 `TicketState` → `graph.invoke()`（入口即调度中枢 `supervisor`）。
+3. `intake`（解析 Agent）：LLM 结构化抽取字段并回写工单。
+4. `triage`（分类 Agent）：LLM 判定「可自动解决 / 必须人工处理」+ 原因。
+5. `research`（检索 Agent）：LLM 携带工具 Schema，自主决定调用哪些工具（原生 Function Calling）；内部为 ReAct 子循环。
 6. `execute_tools`：执行工具调用，结果回灌消息，循环直至无 tool_calls（≤6 轮保护）。
-7. 条件边 `route_after_agent` 决策走自动闭环还是转人工。
-8. 终态节点写回状态、解决方案、派单信息，生成通知文本。
+7. 条件边 `route_supervisor` 按确定性调度规则派发下一个专职 Agent；条件边 `route_after_research` 控制检索 Agent 的工具循环。
+8. `resolver`（处置 Agent）写回状态、解决方案、派单信息，生成通知文本；`critic`（审核 Agent）对自动闭环方案做上线前交叉审核（未通过退回处置 Agent 重做）；`finalize` 收尾归档。
 9. 全流程每步落 `agent_logs`，前端可查。
 
 ---
@@ -101,7 +101,7 @@
 |---|---|---|
 | id | int PK | |
 | ticket_id | int FK | 关联工单 |
-| node | str | 节点名（parse_ticket/classify/agent/tool:xxx/route/...） |
+| node | str | 节点名（调度中枢/解析Agent/分类Agent/检索Agent/工具调用/处置Agent/审核Agent/收尾；工具调用为 `tool:xxx`） |
 | level | str | INFO/WARN/ERROR |
 | message | str | 人类可读摘要 |
 | detail | text (JSON) | 结构化细节（tool 入参出参、LLM 决策） |
@@ -146,6 +146,12 @@ class TicketState(TypedDict):
     assignee: str | None
     notify_message: str | None
     final_status: str | None
+    # 多 Agent 协作（Supervisor 编排）
+    next_agent: str | None                          # 调度中枢决定的下一步 Agent
+    agent_trace: Annotated[list[dict], operator.add]  # 各 Agent 协作轨迹
+    critic_verdict: str | None                      # 审核结论：pass | reject
+    critic_feedback: str | None
+    review_rounds: int                              # 审核轮次（限制重试上限）
     # 循环控制
     messages: Annotated[list[dict], operator.add]   # OpenAI 原生消息格式
     iterations: int
@@ -153,30 +159,31 @@ class TicketState(TypedDict):
 ```
 
 ### 5.2 节点（Nodes）
+
+> 图节点共 **8 个**：调度中枢 + 6 个专职 Agent + 工具执行。多 Agent 实现位于新增包 `app/agent/agents/`：`supervisor.py`（调度中枢）+ 6 个专职 Agent `intake / triage / research / resolver / critic / finalize`；旧的 `app/agent/nodes.py`（原 8 个单 Agent 节点）已删除。
+
 | 节点 | 职责 | 关键动作 |
 |---|---|---|
-| `parse_ticket` | 工单解析 | LLM `json_object` 抽取 title/fault_type/urgency/device_id/user_contact；失败时规则兜底（关键字映射） |
-| `classify` | 意图 & 故障分类 | LLM 输出 `auto_resolvable` + 原因；与高危规则取「或」 |
-| `agent` | 决策中枢 | 绑定 3 工具 Schema 调用 DeepSeek，解析 `message.tool_calls` |
+| `supervisor` | 调度中枢 | 按 `routing.plan_next()` 的确定性规则决定下一个专职 Agent；不参与业务处理 |
+| `intake` | 解析 Agent | LLM `json_object` 抽取 title/fault_type/urgency/device_id/user_contact；失败时规则兜底（关键字映射） |
+| `triage` | 分类 Agent | LLM 输出 `auto_resolvable` + 原因；与高危规则取「或」 |
+| `research` | 检索 Agent | 原生 Function Calling 的 ReAct 子循环，调用 3 个工具；模型漏调检索工具时内部确定性补齐证据 |
 | `execute_tools` | 工具执行 | 逐个执行 tool_call，结果以 `ToolMessage` 回灌；写日志 |
-| `gather_evidence` | 证据兜底 | 若 LLM 未调用「历史工单检索」，确定性补齐调用，保证路由判定有据 |
-| `auto_resolve` | 自动闭环 | LLM 生成解决步骤（Markdown），状态→已解决，mode=自动闭环 |
-| `escalate_human` | 转人工 | 按 fault_type 分派工程师，状态→转人工，生成通知消息 |
+| `resolver` | 处置 Agent | 按确定性规则产出「自动闭环方案」或「转人工派单通知」（两个内部分支） |
+| `critic` | 审核 Agent | 对自动闭环方案做上线前交叉审核（LLM 自检，pass/reject）；reject 清空 decision/resolution 退回处置 Agent 重做，最多 `max_review_rounds=1` 次 |
 | `finalize` | 收尾 | 最终状态落库 + 汇总日志 |
 
 ### 5.3 边与条件边（分支路由是核心考点）
 ```
-START → parse_ticket → classify → agent
-agent ──(有 tool_calls)──► execute_tools ──► agent        # ReAct 循环，iterations≤6
-agent ──(无 tool_calls)──► route_after_agent   [条件边]
-route_after_agent:
-    ├─ 缺检索证据 → gather_evidence → route_after_evidence [条件边]
-    ├─ auto  → auto_resolve → finalize → END
-    └─ human → escalate_human → finalize → END
-route_after_evidence:
-    ├─ auto  → auto_resolve → finalize → END
-    └─ human → escalate_human → finalize → END
+START → supervisor
+supervisor --(条件边1 route_supervisor)--> intake | triage | research | resolver | critic | finalize
+intake / triage / resolver / critic → supervisor          # 专职 Agent 执行完回报调度中枢
+research --(条件边2 route_after_research)--> execute_tools → research   # ReAct 子循环，iterations≤6
+research --(条件边2)--> supervisor
+finalize → END
 ```
+
+> **关键设计原则**：Agent 调度顺序由 `app/agent/routing.py` 的 `plan_next()` **确定性代码规则**给出（按 fault_type/title → auto_resolvable → matched_solutions → decision → critic_verdict/review_rounds 的字段就绪情况依次推进），**不是**让大模型自由路由，保证多 Agent 协作可解释、可复现、可测试、mock 模式完全确定。分支判定 `decide()` 的 4 条硬规则（P0 / 高危故障类型 / 分类判定需人工 / 匹配度 < 0.42 阈值）完全不变。
 
 ### 5.4 路由判定规则（代码内确定性实现，不交给 LLM 拍板）
 判定为 **转人工（human）**，只要满足任一：
@@ -245,7 +252,7 @@ route_after_evidence:
 ```
 返回：`{"ok": true, "status": "处理中", "updated_at": "..."}`，同时落 `agent_logs`。
 
-> LLM 在 `agent` 节点负责主动调用工具；`execute_tools` 节点统一执行并记录。终态由 `auto_resolve` / `escalate_human` 节点强制写库，保证状态一定流转到位。
+> LLM 在 `research`（检索 Agent）节点负责主动调用工具；`execute_tools` 节点统一执行并记录。终态由 `resolver`（处置 Agent）写库，自动闭环方案再经 `critic`（审核 Agent）交叉审核，保证状态一定流转到位。
 
 ---
 
@@ -334,7 +341,7 @@ py scripts\init_db.py         # 建表 + 种子数据
 1. 一条命令完成环境准备 + 数据库初始化；`run.ps1` 启动后前后端均可访问。
 2. 5 条测试样例全部跑通，结果符合上表预期；自动闭环与转人工两类分支均被真实覆盖。
 3. 3 个工具在真实 `LLM_MODE=real` 下由 **模型原生 tool_calls** 触发（日志可见 `tool_calls` 与入参出参）；`mock` 模式下可离线复现。
-4. LangGraph 图中**至少 2 处条件边**（`route_after_agent`、`route_after_evidence`），分支路由可解释。
+4. LangGraph 图中**至少 2 处条件边**（`route_supervisor`、`route_after_research`），分支路由可解释。
 5. 工单状态真实持久化到 SQLite，重启服务后数据仍在；`agent_logs` 每步可查。
 6. 日志同时输出到控制台与 `logs/app.log`，含每步 Agent 思考与工具调用记录。
 7. 代码含中文注释，`README.md` 含目录结构、启动命令、测试样例与常见问题。
@@ -347,7 +354,7 @@ py scripts\init_db.py         # 建表 + 种子数据
 | 风险/假设 | 应对 |
 |---|---|
 | 无 DeepSeek API Key 或额度不足 | `LLM_MODE=mock` 离线兜底；错误时降级并记录 WARN |
-| LLM 不按预期调用工具 | 路由前有 `gather_evidence` 确定性兜底；`iterations` 上限防死循环 |
+| LLM 不按预期调用工具 | 检索 Agent 内部有确定性证据补齐兜底（原 `gather_evidence` 已并入）；`iterations` 上限防死循环 |
 | LLM 返回非合法 JSON | `response_format=json_object` + 解析失败重试1次 + 规则兜底解析 |
 | 相似度阈值误判 | 阈值可配置；种子数据覆盖各类型，README 说明调优方式 |
 | Windows PowerShell 脚本策略限制 | README 给出 `Set-ExecutionPolicy -Scope Process Bypass` 或直接用两条启动命令 |

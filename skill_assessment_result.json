@@ -1,0 +1,2333 @@
+{
+  "summary": {
+    "测试项目": "IT 运维智能工单自动处理 Agent · 个人技能评估测试",
+    "测试日期": "2026-10-08 20:35:19",
+    "后端地址": "http://127.0.0.1:8000",
+    "用例总数": 26,
+    "有效执行用例": 24,
+    "非法输入用例": 2,
+    "用例通过数": 26,
+    "用例通过率": 100.0,
+    "断言总数": 322,
+    "断言通过数": 322,
+    "断言通过率": 100.0,
+    "自动闭环数": 3,
+    "自动闭环率": 12.5,
+    "耗时均值秒": 0.0357,
+    "耗时P50秒": 0.0305,
+    "耗时P90秒": 0.0504,
+    "耗时P95秒": 0.0508,
+    "耗时最大秒": 0.0889,
+    "耗时总计秒": 0.8565,
+    "平均迭代轮数": 3
+  },
+  "records": [
+    {
+      "id": 1,
+      "category": "常见场景",
+      "description": "Office软件字体缺失，无法正常显示文档",
+      "payload": {
+        "description": "Office软件字体缺失，无法正常显示文档",
+        "user_contact": "test1@test.com",
+        "device_id": "dev_003"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=16"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "软件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.14 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.1379"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0889,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "软件",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.1379,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.14 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 2,
+      "category": "常见场景",
+      "description": "电脑系统时间错误，需要同步服务器时间",
+      "payload": {
+        "description": "电脑系统时间错误，需要同步服务器时间",
+        "user_contact": "test2@test.com",
+        "device_id": "dev_004"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=17"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "服务器"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "高危故障类型「服务器」，必须人工处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=张伟"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P2/服务器 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2857"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0462,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "服务器",
+      "urgency": "P2",
+      "assignee": "张伟",
+      "best_match_score": 0.2857,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "高危故障类型「服务器」，必须人工处理",
+      "error": ""
+    },
+    {
+      "id": 3,
+      "category": "常见场景",
+      "description": "打印机卡纸，无法打印文件，不影响核心业务",
+      "payload": {
+        "description": "打印机卡纸，无法打印文件，不影响核心业务",
+        "user_contact": "test3@test.com",
+        "device_id": "dev_002"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=18"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "打印机"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "自动闭环"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "命中成熟方案（匹配度 0.62 ≥ 阈值 0.42），可自动闭环"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "已解决 / 自动闭环"
+        },
+        {
+          "name": "自动闭环产出解决步骤",
+          "ok": true,
+          "detail": "resolution 非空"
+        },
+        {
+          "name": "自动闭环不分派工程师",
+          "ok": true,
+          "detail": "assignee=空"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "21 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0282,
+      "http": 200,
+      "status": "已解决",
+      "mode": "自动闭环",
+      "fault_type": "打印机",
+      "urgency": "P2",
+      "assignee": "",
+      "best_match_score": 0.6207,
+      "iterations": 3,
+      "log_count": 21,
+      "tool_log_count": 4,
+      "reason": "命中成熟方案（匹配度 0.62 ≥ 阈值 0.42），可自动闭环",
+      "error": ""
+    },
+    {
+      "id": 4,
+      "category": "高危P0",
+      "description": "服务器宕机，业务全部中断，紧急故障",
+      "payload": {
+        "description": "服务器宕机，业务全部中断，紧急故障",
+        "user_contact": "test4@test.com",
+        "device_id": "dev_005"
+      },
+      "expect_mode": "转人工",
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=19"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "服务器"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P0"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "紧急等级 P0（业务中断级），必须人工立即处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=张伟"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P0/服务器 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2308"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        },
+        {
+          "name": "预期模式=转人工",
+          "ok": true,
+          "detail": "实际 转人工"
+        }
+      ],
+      "duration_sec": 0.0355,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "服务器",
+      "urgency": "P0",
+      "assignee": "张伟",
+      "best_match_score": 0.2308,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "紧急等级 P0（业务中断级），必须人工立即处理",
+      "error": ""
+    },
+    {
+      "id": 5,
+      "category": "常见场景",
+      "description": "财务部台式机，网线更换后无法访问内网，重新插拔网线",
+      "payload": {
+        "description": "财务部台式机，网线更换后无法访问内网，重新插拔网线",
+        "user_contact": "test5@test.com",
+        "device_id": "dev_001"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=20"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "其他"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P0"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "紧急等级 P0（业务中断级），必须人工立即处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P0/其他 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0262,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "其他",
+      "urgency": "P0",
+      "assignee": "刘洋",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "紧急等级 P0（业务中断级），必须人工立即处理",
+      "error": ""
+    },
+    {
+      "id": 6,
+      "category": "常见场景",
+      "description": "电脑屏幕亮度无法调节，显卡驱动简易重置即可修复",
+      "payload": {
+        "description": "电脑屏幕亮度无法调节，显卡驱动简易重置即可修复",
+        "user_contact": "test6@test.com",
+        "device_id": "dev_006"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=21"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "软件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.24 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2424"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0305,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "软件",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.2424,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.24 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 7,
+      "category": "常见场景",
+      "description": "浏览器缓存过多，网页打开很慢，清理缓存就能恢复",
+      "payload": {
+        "description": "浏览器缓存过多，网页打开很慢，清理缓存就能恢复",
+        "user_contact": "test7@test.com",
+        "device_id": "dev_007"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=22"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "其他"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0474,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "其他",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 8,
+      "category": "常见场景",
+      "description": "电脑无法连接公司WiFi，忘记重新登录域账号",
+      "payload": {
+        "description": "电脑无法连接公司WiFi，忘记重新登录域账号",
+        "user_contact": "test8@test.com",
+        "device_id": "dev_008"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=23"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "账号权限"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.19 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=陈静"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.1875"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0508,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "账号权限",
+      "urgency": "P2",
+      "assignee": "陈静",
+      "best_match_score": 0.1875,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.19 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 9,
+      "category": "常见场景",
+      "description": "鼠标光标卡顿，USB接口重新插拔即可",
+      "payload": {
+        "description": "鼠标光标卡顿，USB接口重新插拔即可",
+        "user_contact": "test9@test.com",
+        "device_id": "dev_009"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=24"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "硬件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=孙磊"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0262,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "硬件",
+      "urgency": "P2",
+      "assignee": "孙磊",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 10,
+      "category": "常见场景",
+      "description": "Outlook收件箱爆满，归档旧邮件释放空间",
+      "payload": {
+        "description": "Outlook收件箱爆满，归档旧邮件释放空间",
+        "user_contact": "test10@test.com",
+        "device_id": "dev_010"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=25"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "邮箱"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "自动闭环"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "命中成熟方案（匹配度 0.59 ≥ 阈值 0.42），可自动闭环"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "已解决 / 自动闭环"
+        },
+        {
+          "name": "自动闭环产出解决步骤",
+          "ok": true,
+          "detail": "resolution 非空"
+        },
+        {
+          "name": "自动闭环不分派工程师",
+          "ok": true,
+          "detail": "assignee=空"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "21 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0257,
+      "http": 200,
+      "status": "已解决",
+      "mode": "自动闭环",
+      "fault_type": "邮箱",
+      "urgency": "P2",
+      "assignee": "",
+      "best_match_score": 0.5882,
+      "iterations": 3,
+      "log_count": 21,
+      "tool_log_count": 4,
+      "reason": "命中成熟方案（匹配度 0.59 ≥ 阈值 0.42），可自动闭环",
+      "error": ""
+    },
+    {
+      "id": 11,
+      "category": "常见场景",
+      "description": "电脑无法访问共享文件夹，权限需要刷新",
+      "payload": {
+        "description": "电脑无法访问共享文件夹，权限需要刷新",
+        "user_contact": "test11@test.com",
+        "device_id": "dev_011"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=26"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "账号权限"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P0"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "紧急等级 P0（业务中断级），必须人工立即处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=陈静"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P0/账号权限 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2128"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0251,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "账号权限",
+      "urgency": "P0",
+      "assignee": "陈静",
+      "best_match_score": 0.2128,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "紧急等级 P0（业务中断级），必须人工立即处理",
+      "error": ""
+    },
+    {
+      "id": 12,
+      "category": "常见场景",
+      "description": "软件弹窗提示证书过期，临时导入证书",
+      "payload": {
+        "description": "软件弹窗提示证书过期，临时导入证书",
+        "user_contact": "test12@test.com",
+        "device_id": "dev_012"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=27"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "软件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.19 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.1860"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.025,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "软件",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.186,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.19 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 13,
+      "category": "常见场景",
+      "description": "电脑风扇异响，大概率积灰，需要现场拆机清理",
+      "payload": {
+        "description": "电脑风扇异响，大概率积灰，需要现场拆机清理",
+        "user_contact": "test13@test.com",
+        "device_id": "dev_013"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=28"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "硬件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "分类判定需人工：用户明确要求现场/人工处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=孙磊"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0667"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0476,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "硬件",
+      "urgency": "P2",
+      "assignee": "孙磊",
+      "best_match_score": 0.0667,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "分类判定需人工：用户明确要求现场/人工处理",
+      "error": ""
+    },
+    {
+      "id": 14,
+      "category": "高危",
+      "description": "数据库连接间歇性报错，偶发不稳定，需要人工排查日志",
+      "payload": {
+        "description": "数据库连接间歇性报错，偶发不稳定，需要人工排查日志",
+        "user_contact": "test14@test.com",
+        "device_id": "dev_014"
+      },
+      "expect_mode": "转人工",
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=29"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "数据库"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "高危故障类型「数据库」，必须人工处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=李娜"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P2/数据库 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        },
+        {
+          "name": "预期模式=转人工",
+          "ok": true,
+          "detail": "实际 转人工"
+        }
+      ],
+      "duration_sec": 0.024,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "数据库",
+      "urgency": "P2",
+      "assignee": "李娜",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "高危故障类型「数据库」，必须人工处理",
+      "error": ""
+    },
+    {
+      "id": 15,
+      "category": "高危",
+      "description": "机房服务器报警，磁盘RAID出现降级风险",
+      "payload": {
+        "description": "机房服务器报警，磁盘RAID出现降级风险",
+        "user_contact": "test15@test.com",
+        "device_id": "dev_015"
+      },
+      "expect_mode": "转人工",
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=30"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "服务器"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "高危故障类型「服务器」，必须人工处理"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=张伟"
+        },
+        {
+          "name": "规则:高危/P0→转人工",
+          "ok": true,
+          "detail": "P2/服务器 → 转人工"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.3333"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        },
+        {
+          "name": "预期模式=转人工",
+          "ok": true,
+          "detail": "实际 转人工"
+        }
+      ],
+      "duration_sec": 0.0245,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "服务器",
+      "urgency": "P2",
+      "assignee": "张伟",
+      "best_match_score": 0.3333,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "高危故障类型「服务器」，必须人工处理",
+      "error": ""
+    },
+    {
+      "id": 16,
+      "category": "常见场景",
+      "description": "笔记本进水，开机黑屏，硬件损坏",
+      "payload": {
+        "description": "笔记本进水，开机黑屏，硬件损坏",
+        "user_contact": "test16@test.com",
+        "device_id": "dev_016"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=31"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "硬件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.25 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=孙磊"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2500"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0248,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "硬件",
+      "urgency": "P2",
+      "assignee": "孙磊",
+      "best_match_score": 0.25,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.25 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 17,
+      "category": "常见场景",
+      "description": "VPN偶尔断线，网络环境不稳定，尝试切换节点重试",
+      "payload": {
+        "description": "VPN偶尔断线，网络环境不稳定，尝试切换节点重试",
+        "user_contact": "test17@test.com",
+        "device_id": "dev_017"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=32"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "账号权限"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.28 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=陈静"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2759"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0356,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "账号权限",
+      "urgency": "P2",
+      "assignee": "陈静",
+      "best_match_score": 0.2759,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.28 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 18,
+      "category": "常见场景",
+      "description": "企业网盘上传文件提示大小超限",
+      "payload": {
+        "description": "企业网盘上传文件提示大小超限",
+        "user_contact": "test18@test.com",
+        "device_id": "dev_018"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=33"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "其他"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0504,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "其他",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 19,
+      "category": "常见场景",
+      "description": "投影仪画面偏色，线材松动，重新插拔HDMI线",
+      "payload": {
+        "description": "投影仪画面偏色，线材松动，重新插拔HDMI线",
+        "user_contact": "test19@test.com",
+        "device_id": "dev_019"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=34"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "硬件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.05 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=孙磊"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0465"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0265,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "硬件",
+      "urgency": "P2",
+      "assignee": "孙磊",
+      "best_match_score": 0.0465,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.05 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 20,
+      "category": "常见场景",
+      "description": "业务系统页面按钮点击无响应，前端页面缓存问题",
+      "payload": {
+        "description": "业务系统页面按钮点击无响应，前端页面缓存问题",
+        "user_contact": "test20@test.com",
+        "device_id": "dev_020"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=35"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "其他"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0000"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0501,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "其他",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.0,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.00 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 21,
+      "category": "边界-非法输入",
+      "description": "",
+      "payload": {
+        "description": ""
+      },
+      "expect_mode": null,
+      "expect_http": 422,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 422，期望 422"
+        }
+      ],
+      "duration_sec": 0.0199,
+      "http": 422,
+      "status": "",
+      "mode": "",
+      "fault_type": "",
+      "urgency": "",
+      "assignee": "",
+      "best_match_score": null,
+      "iterations": null,
+      "log_count": 0,
+      "tool_log_count": 0,
+      "reason": "",
+      "error": ""
+    },
+    {
+      "id": 22,
+      "category": "边界-非法输入",
+      "description": "坏",
+      "payload": {
+        "description": "坏"
+      },
+      "expect_mode": null,
+      "expect_http": 422,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 422，期望 422"
+        }
+      ],
+      "duration_sec": 0.0028,
+      "http": 422,
+      "status": "",
+      "mode": "",
+      "fault_type": "",
+      "urgency": "",
+      "assignee": "",
+      "best_match_score": null,
+      "iterations": null,
+      "log_count": 0,
+      "tool_log_count": 0,
+      "reason": "",
+      "error": ""
+    },
+    {
+      "id": 23,
+      "category": "边界-超长文本",
+      "description": "打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。",
+      "payload": {
+        "description": "打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。打印机 PC-1024 打印一直提示脱机，重启打印服务也不行。",
+        "user_contact": "test23@test.com",
+        "device_id": "PC-1024"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=36"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "打印机"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.09 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.0949"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0309,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "打印机",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.0949,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.09 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 24,
+      "category": "基础-已知回归",
+      "description": "我的打印机 PC-1024 打印一直提示脱机，重启打印服务也不行",
+      "payload": {
+        "description": "我的打印机 PC-1024 打印一直提示脱机，重启打印服务也不行",
+        "user_contact": "张小明",
+        "device_id": "PC-1024"
+      },
+      "expect_mode": "自动闭环",
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=37"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "打印机"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "自动闭环"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "命中成熟方案（匹配度 1.00 ≥ 阈值 0.42），可自动闭环"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "已解决 / 自动闭环"
+        },
+        {
+          "name": "自动闭环产出解决步骤",
+          "ok": true,
+          "detail": "resolution 非空"
+        },
+        {
+          "name": "自动闭环不分派工程师",
+          "ok": true,
+          "detail": "assignee=空"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "21 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        },
+        {
+          "name": "预期模式=自动闭环",
+          "ok": true,
+          "detail": "实际 自动闭环"
+        }
+      ],
+      "duration_sec": 0.0274,
+      "http": 200,
+      "status": "已解决",
+      "mode": "自动闭环",
+      "fault_type": "打印机",
+      "urgency": "P2",
+      "assignee": "",
+      "best_match_score": 1.0,
+      "iterations": 3,
+      "log_count": 21,
+      "tool_log_count": 4,
+      "reason": "命中成熟方案（匹配度 1.00 ≥ 阈值 0.42），可自动闭环",
+      "error": ""
+    },
+    {
+      "id": 25,
+      "category": "边界-无匹配",
+      "description": "新采购的示波器 XYZ-9 驱动装不上，之前从未处理过",
+      "payload": {
+        "description": "新采购的示波器 XYZ-9 驱动装不上，之前从未处理过",
+        "user_contact": "test25@test.com"
+      },
+      "expect_mode": "转人工",
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=38"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "软件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.12 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=刘洋"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.1200"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        },
+        {
+          "name": "预期模式=转人工",
+          "ok": true,
+          "detail": "实际 转人工"
+        }
+      ],
+      "duration_sec": 0.0248,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "软件",
+      "urgency": "P2",
+      "assignee": "刘洋",
+      "best_match_score": 0.12,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.12 < 阈值 0.42）",
+      "error": ""
+    },
+    {
+      "id": 26,
+      "category": "边界-枚举外类型",
+      "description": "我的显示器屏幕不亮，可能是线材问题",
+      "payload": {
+        "description": "我的显示器屏幕不亮，可能是线材问题",
+        "user_contact": "test26@test.com",
+        "device_id": "MON-01"
+      },
+      "expect_mode": null,
+      "expect_http": 200,
+      "checks": [
+        {
+          "name": "HTTP 状态码",
+          "ok": true,
+          "detail": "实际 200"
+        },
+        {
+          "name": "响应 code=0",
+          "ok": true,
+          "detail": "code=0"
+        },
+        {
+          "name": "工单已落库(id)",
+          "ok": true,
+          "detail": "id=39"
+        },
+        {
+          "name": "故障类型在枚举内",
+          "ok": true,
+          "detail": "硬件"
+        },
+        {
+          "name": "紧急等级合法",
+          "ok": true,
+          "detail": "P2"
+        },
+        {
+          "name": "处理模式合法",
+          "ok": true,
+          "detail": "转人工"
+        },
+        {
+          "name": "决策原因非空",
+          "ok": true,
+          "detail": "未匹配到成熟方案（最高匹配度 0.30 < 阈值 0.42）"
+        },
+        {
+          "name": "状态与处理模式一致",
+          "ok": true,
+          "detail": "转人工 / 转人工"
+        },
+        {
+          "name": "转人工产出通知消息",
+          "ok": true,
+          "detail": "notify_message 非空"
+        },
+        {
+          "name": "转人工已分派工程师",
+          "ok": true,
+          "detail": "assignee=孙磊"
+        },
+        {
+          "name": "规则:低于阈值→转人工",
+          "ok": true,
+          "detail": "score=0.2963"
+        },
+        {
+          "name": "日志条目充足(≥8)",
+          "ok": true,
+          "detail": "19 条"
+        },
+        {
+          "name": "含工具调用日志",
+          "ok": true,
+          "detail": "4 条"
+        }
+      ],
+      "duration_sec": 0.0342,
+      "http": 200,
+      "status": "转人工",
+      "mode": "转人工",
+      "fault_type": "硬件",
+      "urgency": "P2",
+      "assignee": "孙磊",
+      "best_match_score": 0.2963,
+      "iterations": 3,
+      "log_count": 19,
+      "tool_log_count": 4,
+      "reason": "未匹配到成熟方案（最高匹配度 0.30 < 阈值 0.42）",
+      "error": ""
+    }
+  ]
+}

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.base import session_scope
 from app.db.models import AgentLog
 from app.logging_config import get_logger
+from app.services import cache
 
 logger = get_logger("itops.agent")
 
@@ -42,6 +43,8 @@ def write_log(
     payload = dict(ticket_id=ticket_id, node=node, level=level.upper(), message=message, detail=_dumps(detail))
     if session is not None:
         session.add(AgentLog(**payload))
-        return
-    with session_scope() as own_session:
-        own_session.add(AgentLog(**payload))
+    else:
+        with session_scope() as own_session:
+            own_session.add(AgentLog(**payload))
+    # 日志写入后立即使该工单的日志缓存失效，避免读到缺行的旧结果
+    cache.invalidate(f"tickets:logs:{int(ticket_id)}")

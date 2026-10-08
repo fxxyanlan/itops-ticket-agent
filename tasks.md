@@ -80,12 +80,12 @@
 | ID | 任务 | 产出 | 验收 |
 |---|---|---|---|
 | T4.1 | State 定义 `app/agent/state.py` | `TicketState`（含 `messages`、`iterations`、证据字段） | 字段与 spec §5.1 一致 |
-| T4.2 | 解析/分类节点 `app/agent/nodes.py::parse_ticket/classify` | LLM 抽取 + 分类，规则兜底，写日志 | 样例1/2 字段抽取正确 |
-| T4.3 | agent + execute_tools 节点 | ReAct 循环：LLM 决策 → 执行工具 → 回灌 `ToolMessage` | 日志可见真实 `tool_calls` 与结果 |
-| T4.4 | gather_evidence 兜底节点 | 确定性补齐历史检索 | 即使 LLM 不调工具，`matched_solutions` 非空 |
-| T4.5 | 路由函数 `app/agent/routing.py` | `route_after_agent` / `route_after_evidence`，实现 spec §5.4 规则 | 规则分支可单测断言 |
-| T4.6 | 终态节点 `auto_resolve` / `escalate_human` / `finalize` | 生成方案或派单，写回状态与通知 | 终态状态/assignee/notification 正确 |
-| T4.7 | 图组装 `app/agent/graph.py` | `StateGraph` + 条件边 + 循环上限 | `graph.invoke()` 端到端返回终态 |
+| T4.2 | 解析/分类 Agent `app/agent/agents/intake.py` / `app/agent/agents/triage.py` | LLM 抽取 + 分类，规则兜底，写日志 | 样例1/2 字段抽取正确 |
+| T4.3 | 检索 Agent + 工具执行 `app/agent/agents/research.py`（含 `execute_tools`） | ReAct 子循环：LLM 决策 → 执行工具 → 回灌 `ToolMessage`；模型漏调检索工具时内部确定性补齐证据 | 日志可见真实 `tool_calls` 与结果 |
+| T4.4 | 处置 Agent `app/agent/agents/resolver.py` | 两个内部分支：自动闭环方案 / 转人工派单通知 | 两类分支仍可达；状态/assignee/notification 正确 |
+| T4.5 | 调度与路由 `app/agent/routing.py::plan_next` + `route_supervisor` / `route_after_research`（`decide()` 实现 spec §5.4 规则） | 确定性 Agent 调度 + 分支路由 | 规则分支可单测断言 |
+| T4.6 | 审核 Agent `app/agent/agents/critic.py` | 对自动闭环方案做上线前交叉审核（pass/reject），reject 退回处置 Agent 重做，受 `max_review_rounds` 保护 | 审核 Agent 参与自动闭环，重试有上限 |
+| T4.7 | 收尾 + 图组装 `app/agent/agents/finalize.py` / `app/agent/graph.py` | Supervisor 中心化拓扑 + 2 处条件边 + 循环上限 | `graph.invoke()` 端到端返回终态 |
 
 **阶段验收**：`scripts/test_graph.py` 用 5 条样例直跑图，自动闭环/转人工两类分支均被覆盖。
 

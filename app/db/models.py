@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.constants import STATUS_NEW
@@ -17,6 +17,8 @@ class Ticket(Base):
     """工单表：同时承载「线上工单」与「历史已解决工单」（种子数据）。"""
 
     __tablename__ = "tickets"
+    # 工具1（search_similar_tickets）固定按 status + fault_type 过滤，复合索引避免全表扫描
+    __table_args__ = (Index("ix_tickets_status_fault_type", "status", "fault_type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), default="")

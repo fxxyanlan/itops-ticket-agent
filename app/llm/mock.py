@@ -19,7 +19,7 @@ from app.constants import (
     URGENCY_CRITICAL,
     URGENCY_DEFAULT,
 )
-from app.llm.schemas import ClassifyResult, LLMResponse, TicketParseResult, ToolCall
+from app.llm.schemas import ClassifyResult, LLMResponse, ReviewResult, TicketParseResult, ToolCall
 
 # ===== 关键词规则 =====
 # 故障类型识别（顺序敏感：先匹配到的优先）
@@ -213,3 +213,14 @@ def generate_notification(context: dict, assignee: dict, reason: str) -> str:
         f"预计响应时长约 {assignee.get('avg_hours', 2) if assignee else 2} 小时。\n"
         f"请及时跟进处理。（消息已同步至企业微信运维值班群）"
     )
+
+
+def review_resolution(
+    context: dict, resolution: str, matches: list[dict], device: dict | None = None
+) -> ReviewResult:
+    """规则版方案审核：方案非空 + 有历史工单依据 → 通过。"""
+    if not (resolution or "").strip():
+        return ReviewResult(verdict="reject", feedback="方案为空，需重新生成")
+    if not matches:
+        return ReviewResult(verdict="reject", feedback="缺少历史工单依据，需重新检索")
+    return ReviewResult(verdict="pass", feedback="方案步骤完整且具备历史工单依据，审核通过")

@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     # --- 业务参数 ---
     match_threshold: float = 0.42
     max_iterations: int = 6
+    max_review_rounds: int = 1  # 审核 Agent 最多触发的「退回重做」次数
+
+    # --- API 性能与契约 ---
+    cache_ttl_seconds: int = 30  # 只读资源（设备列表等）缓存有效期
+    health_cache_ttl_seconds: int = 5  # 健康检查数据库探活结果缓存有效期
+    search_candidate_limit: int = 2000  # 单次历史工单检索的最大候选数（安全阀）
+    max_page_size: int = 500  # 列表接口单页最大条数
+    default_log_limit: int = 500  # 日志接口默认返回条数
+    expose_error_detail: bool = False  # 是否向客户端回显原始异常文本（生产应关闭）
 
     # --- 日志 ---
     log_level: str = "INFO"

@@ -26,6 +26,13 @@ class ClassifyResult(BaseModel):
     reason: str = Field(default="", description="判定理由")
 
 
+class ReviewResult(BaseModel):
+    """方案审核结果（审核 Agent 使用）。"""
+
+    verdict: str = Field(default="pass", description="审核结论：pass / reject")
+    feedback: str = Field(default="", description="审核意见")
+
+
 class ToolCall(BaseModel):
     """归一化后的工具调用（对应 OpenAI tool_calls 结构）。"""
 

@@ -1,66 +1,69 @@
-"""LangGraph 图组装：把节点与条件边连成完整的状态机。"""
+"""LangGraph 图组装：Supervisor 中心化的多 Agent 协作拓扑。
+
+拓扑结构：
+    START → supervisor（调度中枢）
+    supervisor --(条件边1)--> intake | triage | research | resolver | critic | finalize
+    intake / triage / resolver / critic → supervisor          # 专职 Agent 回报调度中枢
+    research --(条件边2)--> execute_tools → research           # 检索 Agent 的 ReAct 子循环
+    research --(条件边2)--> supervisor
+    finalize → END
+"""
 
 from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agent import nodes
-from app.agent.routing import route_after_agent, route_after_evidence
+from app.agent import routing
+from app.agent.agents import critic, finalize, intake, research, resolver, supervisor, triage
 from app.agent.state import TicketState
 
-# 条件边1：agent 之后的分支映射
-ROUTE_MAP = {
-    "execute_tools": "execute_tools",
-    "gather_evidence": "gather_evidence",
-    "auto_resolve": "auto_resolve",
-    "escalate_human": "escalate_human",
+# 条件边1：调度中枢 → 专职 Agent
+SUPERVISOR_ROUTE_MAP = {
+    "intake": "intake",
+    "triage": "triage",
+    "research": "research",
+    "resolver": "resolver",
+    "critic": "critic",
+    "finalize": "finalize",
 }
 
-# 条件边2：证据补齐之后的分支映射
-EVIDENCE_ROUTE_MAP = {
-    "auto_resolve": "auto_resolve",
-    "escalate_human": "escalate_human",
+# 条件边2：检索 Agent → 工具执行 / 回报调度中枢
+RESEARCH_ROUTE_MAP = {
+    "execute_tools": "execute_tools",
+    "supervisor": "supervisor",
 }
 
 
 def build_graph():
-    """构建并编译 LangGraph 状态机。
-
-    图结构：
-        START → parse_ticket → classify → agent
-        agent --(有 tool_calls)--> execute_tools --> agent      # ReAct 循环
-        agent --(条件边1)--> gather_evidence | auto_resolve | escalate_human
-        gather_evidence --(条件边2)--> auto_resolve | escalate_human
-        auto_resolve / escalate_human → finalize → END
-    """
+    """构建并编译 LangGraph 状态机。"""
     builder = StateGraph(TicketState)
 
-    # 注册节点
-    builder.add_node("parse_ticket", nodes.parse_ticket)
-    builder.add_node("classify", nodes.classify)
-    builder.add_node("agent", nodes.agent_node)
-    builder.add_node("execute_tools", nodes.execute_tools)
-    builder.add_node("gather_evidence", nodes.gather_evidence)
-    builder.add_node("auto_resolve", nodes.auto_resolve)
-    builder.add_node("escalate_human", nodes.escalate_human)
-    builder.add_node("finalize", nodes.finalize)
+    # 调度中枢
+    builder.add_node("supervisor", supervisor.run)
+    # 专职 Agent
+    builder.add_node("intake", intake.run)
+    builder.add_node("triage", triage.run)
+    builder.add_node("research", research.run)
+    builder.add_node("execute_tools", research.execute_tools)
+    builder.add_node("resolver", resolver.run)
+    builder.add_node("critic", critic.run)
+    builder.add_node("finalize", finalize.run)
 
-    # 线性边
-    builder.add_edge(START, "parse_ticket")
-    builder.add_edge("parse_ticket", "classify")
-    builder.add_edge("classify", "agent")
+    # 入口：先由调度中枢编排
+    builder.add_edge(START, "supervisor")
 
-    # 条件边1：工具循环 / 补证据 / 分支路由
-    builder.add_conditional_edges("agent", route_after_agent, ROUTE_MAP)
-    # ReAct 循环：工具执行后回到 agent 继续决策
-    builder.add_edge("execute_tools", "agent")
+    # 条件边1：调度中枢分派下一个 Agent
+    builder.add_conditional_edges("supervisor", routing.route_supervisor, SUPERVISOR_ROUTE_MAP)
 
-    # 条件边2：补完证据后二选一
-    builder.add_conditional_edges("gather_evidence", route_after_evidence, EVIDENCE_ROUTE_MAP)
+    # 专职 Agent 执行完统一回报调度中枢
+    for agent_node in ("intake", "triage", "resolver", "critic"):
+        builder.add_edge(agent_node, "supervisor")
 
-    # 两条终态分支统一收尾
-    builder.add_edge("auto_resolve", "finalize")
-    builder.add_edge("escalate_human", "finalize")
+    # 条件边2：检索 Agent 内部的 ReAct 子循环
+    builder.add_conditional_edges("research", routing.route_after_research, RESEARCH_ROUTE_MAP)
+    builder.add_edge("execute_tools", "research")
+
+    # 收尾
     builder.add_edge("finalize", END)
 
     return builder.compile()

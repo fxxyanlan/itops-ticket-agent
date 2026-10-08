@@ -56,6 +56,7 @@
 | **真正的业务闭环，而非问答** | 输出的是工单状态变更与可执行的解决方案/派单通知，而不是一段聊天回复 |
 | **决策可解释、结果可复现** | 分流规则由代码确定性裁决（P0 / 高危类型 / 分类结果 / 相似度阈值），模型不"拍脑袋"决定去向，每条决策都附带原因 |
 | **原生工具调用** | 3 个业务工具由模型自主决策调用，而非硬编码 `if-else`，贴近真实 Agent 形态 |
+| **Supervisor 多 Agent 协作** | 调度中枢按确定性规则编排解析 / 分类 / 检索 / 处置 / 审核 / 收尾 6 个专职 Agent；自动闭环方案再经审核 Agent 自检重试，协作过程可解释、可复现 |
 | **开箱即用、离线可跑** | 无需 API Key 即可用离线模式完整演示全流程，降低体验与评审门槛 |
 | **全链路可观测** | 每一步 Agent 思考与每次工具调用的入参出参都落库并可视化，便于审计与调优 |
 | **轻量可控** | 仅用 LangGraph，无重型多 Agent 框架，依赖少、易读、易二次开发 |
@@ -69,7 +70,7 @@
 | 工单解析 | 从自然语言结构化抽取：标题、故障类型、紧急等级、设备编号、联系方式 |
 | 意图分类 | 区分「可自动解决」与「必须人工处理」 |
 | 原生 Function Calling | 模型自主调用 3 个业务工具，支持多轮 ReAct 循环 |
-| 条件边分支 | 2 处 LangGraph 条件边：工具循环路由 + 自动/人工分流 |
+| 条件边分支 | 2 处 LangGraph 条件边：`route_supervisor`（Agent 编排）+ `route_after_research`（工具循环） |
 | 状态持久化 | 工单状态与 Agent 日志全部落 SQLite |
 | 全链路日志 | 控制台 + 滚动文件 + 数据库三通道，每个节点与工具调用可追溯 |
 | 离线可用 | 离线模式无需 API Key 即可完整演示 |
@@ -91,7 +92,7 @@ flowchart TB
         SVC["业务服务<br/>工单 / 日志 / Agent 调度"]
     end
     subgraph Agent["编排层"]
-        G["LangGraph 状态机<br/>8 个节点 + 条件边"]
+        G["Supervisor 多 Agent 状态机<br/>8 个节点 + 2 处条件边"]
         LLM["DeepSeek 大模型<br/>原生 Function Calling"]
         TOOLS["工具层<br/>历史检索 · 设备资产 · 状态更新"]
     end
@@ -119,35 +120,36 @@ flowchart TB
 
 ### 5.1 编排流程
 
-状态机共 8 个节点，通过 2 处条件边实现「工具循环」与「自动/人工分流」。
+状态机为 Supervisor 中心化的多 Agent 拓扑：**调度中枢 + 6 个专职 Agent + 工具执行**，共 8 个节点；通过 2 处条件边（`route_supervisor` 负责 Agent 编排，`route_after_research` 负责工具循环）串联协作。Agent 执行顺序由 `app/agent/routing.py::plan_next()` 的确定性规则给出，而非大模型自由路由。
 
 ```mermaid
 flowchart TD
-    START([START]) --> parse["工单解析"]
-    parse --> classify["意图 & 故障分类"]
-    classify --> agent["Agent 决策<br/>携带工具声明调用模型"]
-    agent -->|原生 tool_calls| tools["执行工具<br/>检索 / 资产 / 状态"]
-    tools --> agent
-    agent -->|条件边 ①| route{"分流判定"}
-    route -->|缺检索证据| evidence["证据补齐（确定性兜底）"]
-    route -->|可自动闭环| auto["自动闭环"]
-    route -->|需人工处理| esc["转人工"]
-    evidence -->|条件边 ②| auto
-    evidence -->|条件边 ②| esc
-    auto --> fin["收尾"]
-    esc --> fin
-    fin --> END([END])
+    START([START]) --> supervisor["调度中枢<br/>确定性编排"]
+    supervisor -->|条件边 ①| intake["解析 Agent"]
+    supervisor -->|条件边 ①| triage["分类 Agent"]
+    supervisor -->|条件边 ①| research["检索 Agent"]
+    supervisor -->|条件边 ①| resolver["处置 Agent"]
+    supervisor -->|条件边 ①| critic["审核 Agent"]
+    supervisor -->|条件边 ①| finalize["收尾"]
+    research -->|条件边 ② 有 tool_calls| tools["执行工具<br/>检索 / 资产 / 状态"]
+    tools --> research
+    research -->|条件边 ② 无 tool_calls| supervisor
+    intake --> supervisor
+    triage --> supervisor
+    resolver --> supervisor
+    critic -->|reject 退回重做| supervisor
+    finalize --> END([END])
 ```
 
 | 节点 | 职责 |
 |---|---|
-| `parse_ticket` | 大模型抽取工单字段并回写 |
-| `classify` | 判定可自动解决 / 必须人工 |
-| `agent` | 携带工具声明调用模型，解析原生 `tool_calls` |
-| `execute_tools` | 执行工具，并将结果回灌为 `tool` 消息 |
-| `gather_evidence` | 模型漏调检索工具时的确定性兜底 |
-| `auto_resolve` | 生成解决步骤 → 状态「已解决」+ 标记自动闭环 |
-| `escalate_human` | 按故障类型分派工程师 → 状态「转人工」+ 生成通知 |
+| `supervisor` | 调度中枢：按确定性规则编排 6 个专职 Agent，不碰业务 |
+| `intake` | 解析 Agent：大模型抽取工单字段并回写 |
+| `triage` | 分类 Agent：判定可自动解决 / 必须人工 |
+| `research` | 检索 Agent：携带工具声明调用模型，解析原生 `tool_calls`（ReAct 子循环） |
+| `execute_tools` | 工具执行：执行工具并将结果回灌为 `tool` 消息 |
+| `resolver` | 处置 Agent：生成解决步骤（自动闭环）或派单通知（转人工） |
+| `critic` | 审核 Agent：对自动闭环方案做上线前交叉审核，未通过退回重做 |
 | `finalize` | 收尾并汇总日志 |
 
 ### 5.2 工单状态流转
@@ -295,17 +297,23 @@ Copy-Item .env.example .env
 
 ### 9.2 REST 接口
 
-统一响应体：`{"code": 0, "message": "ok", "data": ...}`
+统一响应体：`{"code": 0, "message": "ok", "detail": null, "data": ...}`（含全部错误响应；
+参数校验失败时额外返回 `errors` 结构化字段）。完整规范见 [API文档.md](API文档.md)。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/tickets` | 提交工单，同步跑完 Agent 并返回终态 |
-| GET | `/api/tickets?status=&limit=` | 工单列表（可按状态过滤） |
+| POST | `/api/tickets` | 提交工单，同步跑完 Agent 并返回终态（非 300ms 目标） |
+| POST | `/api/tickets/async` | 提交工单（异步，立即 `202`，由状态接口轮询） |
+| GET | `/api/tickets/{id}/status` | 异步任务状态轮询（`terminal=true` 即终态） |
+| GET | `/api/tickets?status=&limit=&offset=` | 工单列表（状态过滤 + 分页，`limit ≤ 500`） |
 | GET | `/api/tickets/{id}` | 工单详情 |
-| GET | `/api/tickets/{id}/logs` | 该工单的 Agent 处理日志 |
+| GET | `/api/tickets/{id}/logs?limit=&offset=` | 该工单的 Agent 处理日志（分页） |
 | POST | `/api/tickets/{id}/rerun` | 重新触发 Agent |
-| GET | `/api/devices` | 设备资产列表 |
+| GET | `/api/devices?limit=` | 设备资产列表 |
 | GET | `/api/health` | 健康检查（LLM 模式 / 数据库连通性） |
+| GET | `/api/metrics` | 运行指标（逐路径分位耗时 / 错误率 / 缓存命中率） |
+
+> 只读接口带 TTL 缓存，响应头含 `X-Response-Time-Ms`；只读接口 P95 ≤ 300ms，实测见 [API测试报告.md](API测试报告.md)。
 
 ### 9.3 调用示例
 
@@ -342,26 +350,30 @@ curl -X POST http://127.0.0.1:8000/api/tickets `
 demo/
 ├── README.md                   # 项目说明（本文档）
 ├── 使用说明.md                 # 使用者手册（功能 / 操作 / 配置 / 故障排查）
+├── API文档.md / API测试报告.md  # 接口规范 / 测试与性能报告
 ├── spec.md / tasks.md / checklist.md   # 设计规格 / 任务拆解 / 验收清单
 ├── requirements.txt
+├── pytest.ini                  # pytest 配置（契约 / 边界 / 性能标记）
 ├── .env.example                # 环境变量模板
 ├── run.ps1                     # 一键启动（后端 + 前端）
 ├── run_backend.ps1 / run_frontend.ps1  # 单独启动
+├── batch_ticket_test.py        # 批量用例（26 例 / 322 断言）
 ├── app/
 │   ├── config.py               # 配置（pydantic-settings）
 │   ├── constants.py            # 状态 / 故障类型 / 高危类型等常量
 │   ├── logging_config.py       # 日志系统（控制台 + 滚动文件）
-│   ├── main.py                 # FastAPI 入口
-│   ├── db/                     # engine / 模型 / 种子数据
+│   ├── main.py                 # FastAPI 入口（计时中间件 + 统一异常信封）
+│   ├── db/                     # engine / 模型 / 种子数据（WAL + PRAGMA + 连接池）
 │   ├── schemas/                # 请求与响应模型
 │   ├── llm/                    # 大模型客户端（真实 / 离线双模式）
 │   ├── tools/                  # 供模型调用的 3 个工具
-│   ├── agent/                  # LangGraph 状态机（state / nodes / routing / graph）
-│   ├── services/               # 工单服务 / 日志服务 / Agent 调度
-│   └── api/routes.py           # REST 接口
+│   ├── agent/                  # LangGraph 多 Agent（state / routing / graph / agents/*）
+│   ├── services/               # 工单 / 日志 / Agent 调度 / 缓存 / 指标 / 异步任务登记
+│   └── api/routes.py           # REST 接口（含异步提交与运行指标）
 ├── frontend/streamlit_app.py   # Streamlit 三页签页面
-├── scripts/                    # 初始化数据库 / 测试与验收脚本
-├── data/                       # SQLite 数据库文件
+├── tests/                      # pytest：契约 / 边界异常 / 性能
+├── scripts/                    # 初始化数据库 / 压测 / 基准数据生成脚本
+├── data/                       # SQLite 数据库文件（含 benchmark.db 基准集）
 └── logs/                       # 运行日志
 ```
 
@@ -382,6 +394,17 @@ demo/
 # 单条工单逐节点追踪状态机
 .\.venv\Scripts\python.exe scripts\test_graph.py
 .\.venv\Scripts\python.exe scripts\test_graph.py "核心数据库服务器宕机了，业务全部中断"
+
+# 批量用例（26 例 / 322 断言，需先启动后端；期望 26/26、322/322）
+.\.venv\Scripts\python.exe batch_ticket_test.py
+
+# pytest：契约 / 边界异常 / 性能（进程内，无需启动服务）
+.\.venv\Scripts\python.exe -m pytest -m "not perf"   # 31 passed
+.\.venv\Scripts\python.exe -m pytest -m perf         # 9 passed
+
+# 大数据集压测（可选）
+.\.venv\Scripts\python.exe scripts\gen_benchmark_data.py --tickets 20000 --devices 2000
+.\.venv\Scripts\python.exe scripts\api_benchmark.py --base-url http://127.0.0.1:8011
 ```
 
 | # | 输入描述 | 期望结果 |
@@ -430,3 +453,5 @@ git push -u origin main
 | [使用说明.md](使用说明.md) | 使用者 / 运维 | 前置条件、安装、配置、操作指南、故障排查、维护 |
 | [spec.md](spec.md) | 设计与评审 | 架构设计、数据模型、状态机、接口设计、验收结果 |
 | [checklist.md](checklist.md) | 验收 | 逐项验收清单与实测记录 |
+| [API文档.md](API文档.md) | 接口调用方 / 前端 / 测试 | 接口清单、参数规范、返回结构、错误码、示例、缓存与性能约定 |
+| [API测试报告.md](API测试报告.md) | 评审 / 测试 | 测试方案、用例设计、性能前后对照、优化措施、指标达成与遗留风险 |

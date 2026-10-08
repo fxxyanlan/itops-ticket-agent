@@ -1,11 +1,22 @@
-"""工单服务：工单 CRUD、状态流转、工程师分派。"""
+"""工单服务：工单 CRUD、状态流转、工程师分派。
+
+读写分离策略
+- 读路径带 TTL 缓存（`app.services.cache`），消除重复查询开销；
+- 写路径统一调用 `cache.invalidate("tickets")`，缓存正确性由主动失效保证，
+  TTL 只作为兜底，不作为一致性机制。
+"""
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants import STATUS_NEW
 from app.db.base import session_scope
 from app.db.models import Engineer, Ticket
+from app.services import cache
+
+# 工单相关缓存键前缀（集中失效用）
+_CACHE_PREFIX = "tickets"
 
 
 def _to_dict(ticket: Ticket) -> dict:
@@ -41,28 +52,43 @@ def create_ticket(description: str, user_contact: str | None = None, device_id: 
         )
         session.add(ticket)
         session.flush()
-        return _to_dict(ticket)
+        result = _to_dict(ticket)
+    cache.invalidate(_CACHE_PREFIX)
+    return result
 
 
 def get_ticket(ticket_id: int) -> dict | None:
-    """查询单个工单。"""
+    """查询单个工单（带缓存）。"""
+    key = f"{_CACHE_PREFIX}:detail:{int(ticket_id)}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
     with session_scope() as session:
         ticket = session.get(Ticket, int(ticket_id))
-        return _to_dict(ticket) if ticket else None
+        result = _to_dict(ticket) if ticket else None
+    if result is not None:
+        cache.set(key, result, settings.cache_ttl_seconds)
+    return result
 
 
-def list_tickets(status: str | None = None, limit: int = 100) -> list[dict]:
-    """按状态过滤查询工单列表（按创建时间倒序）。"""
+def list_tickets(status: str | None = None, limit: int = 100, offset: int = 0) -> list[dict]:
+    """按状态过滤查询工单列表（按 id 倒序，支持分页，带缓存）。"""
+    safe_limit = max(1, int(limit))
+    safe_offset = max(0, int(offset))
+    key = f"{_CACHE_PREFIX}:list:{status or '*'}:{safe_limit}:{safe_offset}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
     with session_scope() as session:
-        stmt = select(Ticket).order_by(Ticket.id.desc()).limit(max(1, int(limit)))
+        stmt = select(Ticket)
         if status:
-            stmt = (
-                select(Ticket)
-                .where(Ticket.status == status)
-                .order_by(Ticket.id.desc())
-                .limit(max(1, int(limit)))
-            )
-        return [_to_dict(row) for row in session.scalars(stmt).all()]
+            stmt = stmt.where(Ticket.status == status)
+        stmt = stmt.order_by(Ticket.id.desc()).offset(safe_offset).limit(safe_limit)
+        rows = [_to_dict(row) for row in session.scalars(stmt).all()]
+
+    cache.set(key, rows, settings.cache_ttl_seconds)
+    return rows
 
 
 def update_parsed_fields(ticket_id: int, **fields) -> dict | None:
@@ -77,7 +103,9 @@ def update_parsed_fields(ticket_id: int, **fields) -> dict | None:
                 setattr(ticket, key, value)
         session.add(ticket)
         session.flush()
-        return _to_dict(ticket)
+        result = _to_dict(ticket)
+    cache.invalidate(_CACHE_PREFIX)
+    return result
 
 
 def update_status(ticket_id: int, status: str, **extra) -> dict | None:
@@ -99,7 +127,9 @@ def update_status(ticket_id: int, status: str, **extra) -> dict | None:
                 setattr(ticket, key, value)
         session.add(ticket)
         session.flush()
-        return _to_dict(ticket)
+        result = _to_dict(ticket)
+    cache.invalidate(_CACHE_PREFIX)
+    return result
 
 
 def pick_engineer(fault_type: str) -> dict | None:
@@ -124,12 +154,18 @@ def pick_engineer(fault_type: str) -> dict | None:
 
 
 def list_devices(limit: int = 200) -> list[dict]:
-    """设备资产列表（前端辅助查看）。"""
+    """设备资产列表（前端辅助查看，带缓存）。"""
     from app.db.models import DeviceAsset
 
+    safe_limit = max(1, int(limit))
+    key = f"devices:{safe_limit}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
     with session_scope() as session:
-        rows = session.scalars(select(DeviceAsset).limit(limit)).all()
-        return [
+        rows = session.scalars(select(DeviceAsset).limit(safe_limit)).all()
+        result = [
             {
                 "device_id": r.device_id,
                 "hostname": r.hostname,
@@ -144,16 +180,30 @@ def list_devices(limit: int = 200) -> list[dict]:
             for r in rows
         ]
 
+    cache.set(key, result, settings.cache_ttl_seconds)
+    return result
 
-def list_logs(ticket_id: int) -> list[dict]:
-    """查询某工单的 Agent 处理日志（按时间正序）。"""
+
+def list_logs(ticket_id: int, limit: int = 500, offset: int = 0) -> list[dict]:
+    """查询某工单的 Agent 处理日志（按时间正序，支持分页，带缓存）。"""
     from app.db.models import AgentLog
+
+    safe_limit = max(1, int(limit))
+    safe_offset = max(0, int(offset))
+    key = f"{_CACHE_PREFIX}:logs:{int(ticket_id)}:{safe_limit}:{safe_offset}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
 
     with session_scope() as session:
         rows = session.scalars(
-            select(AgentLog).where(AgentLog.ticket_id == int(ticket_id)).order_by(AgentLog.id.asc())
+            select(AgentLog)
+            .where(AgentLog.ticket_id == int(ticket_id))
+            .order_by(AgentLog.id.asc())
+            .offset(safe_offset)
+            .limit(safe_limit)
         ).all()
-        return [
+        result = [
             {
                 "id": r.id,
                 "ticket_id": r.ticket_id,
@@ -165,3 +215,6 @@ def list_logs(ticket_id: int) -> list[dict]:
             }
             for r in rows
         ]
+
+    cache.set(key, result, settings.cache_ttl_seconds)
+    return result

@@ -1,6 +1,6 @@
-"""条件边路由：决定 Agent 的下一步走向，以及「自动闭环 / 转人工」分支。
+"""路由与调度规则：决定「自动闭环 / 转人工」分支，以及多 Agent 的执行顺序。
 
-设计原则：分支判定用代码里的确定性规则，而不是让大模型自己拍板，
+设计原则：分支判定与 Agent 调度都用代码里的确定性规则，而不是让大模型自己拍板，
 保证结果可解释、可测试。
 """
 
@@ -53,18 +53,48 @@ def decide(state: TicketState) -> tuple[str, str]:
     return "auto", f"命中成熟方案（匹配度 {score:.2f} ≥ 阈值 {threshold}），可自动闭环"
 
 
-def route_after_agent(state: TicketState) -> str:
-    """条件边1：agent 节点执行后的路由。
+# --------------------------------------------------------------------------- #
+# 多 Agent 调度：Supervisor 的确定性编排策略
+# --------------------------------------------------------------------------- #
+def plan_next(state: TicketState) -> tuple[str, str]:
+    """返回 (next_agent, reason)，next_agent ∈ {intake, triage, research, resolver, critic, finalize}。
 
-    优先级：仍在工具循环 → 补齐证据 → 自动闭环 / 转人工。
+    按「解析 → 分类 → 检索 → 处置 → 审核 → 收尾」的顺序推进，
+    每个分支都以共享状态里的字段是否就绪作为推进条件，天然幂等、不会绕圈。
     """
-    if has_tool_calls(state):
-        return "execute_tools"
+    # 1) 结构化字段缺失 → 解析 Agent
+    if not state.get("fault_type") or not state.get("title"):
+        return "intake", "缺少结构化工单字段，先由解析 Agent 抽取"
+
+    # 2) 未判定可自动解决性 → 分类 Agent
+    if state.get("auto_resolvable") is None:
+        return "triage", "尚未判定可自动解决性，交由分类 Agent 判定"
+
+    # 3) 缺少历史方案证据 → 检索 Agent
     if needs_evidence(state):
-        return "gather_evidence"
-    return "auto_resolve" if decide(state)[0] == "auto" else "escalate_human"
+        return "research", "缺少历史方案证据，交由检索 Agent 收集"
+
+    # 4) 尚未产出处置结果 → 处置 Agent
+    if state.get("decision") is None:
+        return "resolver", "证据就绪，交由处置 Agent 生成处置结果"
+
+    # 5) 自动闭环方案需交叉审核（未通过则退回重做，受重试上限保护）
+    if (
+        state.get("decision") == "auto"
+        and state.get("critic_verdict") != "pass"
+        and int(state.get("review_rounds") or 0) <= settings.max_review_rounds
+    ):
+        return "critic", "自动闭环方案需上线前自检，交由审核 Agent 审核"
+
+    # 6) 全部就绪 → 收尾归档
+    return "finalize", "各 Agent 已完成，进入收尾归档"
 
 
-def route_after_evidence(state: TicketState) -> str:
-    """条件边2：证据补齐后的路由。"""
-    return "auto_resolve" if decide(state)[0] == "auto" else "escalate_human"
+def route_supervisor(state: TicketState) -> str:
+    """条件边：调度中枢决定下一个要执行的 Agent 节点。"""
+    return state.get("next_agent") or "finalize"
+
+
+def route_after_research(state: TicketState) -> str:
+    """条件边：检索 Agent 之后 —— 仍在工具循环则执行工具，否则交回调度中枢。"""
+    return "execute_tools" if has_tool_calls(state) else "supervisor"

@@ -34,7 +34,7 @@
 | 端到端（进程内） | `py scripts/demo_test.py` | ✅ **5/5 通过** |
 | 端到端（HTTP） | `py scripts/demo_test.py --http` | ✅ **5/5 通过**（样例1/4 自动闭环，样例2/3/5 转人工） |
 | REST 全接口（真实） | `probe_api.py`（14 项） | ✅ 14/14 通过；health/POST/详情/日志/重跑/列表/过滤/设备/404 全部符合预期 |
-| 日志完整性（真实） | `GET /api/tickets/{id}/logs` | ✅ 14 条日志覆盖 10 类节点；转人工写入 1 条 `WARN`；含每次工具调用入参出参 |
+| 日志完整性（真实） | `GET /api/tickets/{id}/logs` | ✅ 每单 19–21 条日志覆盖 8 个节点（调度中枢 + 6 个专职 Agent + 工具执行）；转人工写入 1 条 `WARN`；含每次工具调用入参出参 |
 | Streamlit 前端（真实） | 浏览器实测三 Tab + 真实提交 | ✅ 侧边栏 `LLM 模式: real`；提交键盘工单 #17 → 转人工/孙磊；无报错 |
 | 后端异常检查 | uvicorn 全量日志 | ✅ 全程仅 `HTTP/1.1 200 OK`，无 500、无 traceback |
 
@@ -111,22 +111,24 @@
 
 ## 5. LangGraph 状态机（P4）—— 核心
 
-- [ ] [A] `TicketState` 含 `messages`(`Annotated[list[dict], operator.add]`，OpenAI 原生格式)、`iterations`、证据与决策字段
-- [ ] [A] `parse_ticket` 抽取 title/fault_type/urgency/device_id/user_contact 并回写工单
-- [ ] [A] `classify` 输出 `auto_resolvable` + `classify_reason`
-- [ ] [A] `agent` 节点真实使用 LLM 原生 Function Calling 决策工具
-- [ ] [A] `execute_tools` 逐个执行并按 `ToolMessage` 回灌，ReAct 循环成立
+- [ ] [A] `TicketState` 含 `messages`(`Annotated[list[dict], operator.add]`，OpenAI 原生格式)、`iterations`、证据与决策字段，以及多 Agent 协作字段 `next_agent` / `agent_trace` / `critic_verdict` / `critic_feedback` / `review_rounds`
+- [ ] [A] 解析 Agent（`intake`）抽取 title/fault_type/urgency/device_id/user_contact 并回写工单
+- [ ] [A] 分类 Agent（`triage`）输出 `auto_resolvable` + `classify_reason`
+- [ ] [A] 检索 Agent（`research`）真实使用 LLM 原生 Function Calling 决策工具（ReAct 子循环）
+- [ ] [A] 工具执行节点（`execute_tools`）逐个执行并按 `ToolMessage` 回灌，ReAct 循环成立
 - [ ] [A] 循环有上限（iterations ≤ 6），不会死循环
-- [ ] [A] `gather_evidence` 兜底：LLM 未调工具时仍保证有检索证据
-- [ ] [A] **条件边1** `route_after_agent` 存在且生效
-- [ ] [A] **条件边2** `route_after_evidence` 存在且生效
+- [ ] [A] 检索 Agent 内部兜底：LLM 未调检索工具时确定性补齐检索证据（原 `gather_evidence` 已并入）
+- [ ] [A] **条件边1** `route_supervisor`（调度中枢 → 6 个专职 Agent）存在且生效
+- [ ] [A] **条件边2** `route_after_research`（检索 Agent → 工具执行 / 回报调度中枢）存在且生效
+- [ ] [A] 调度顺序由 `app/agent/routing.py::plan_next` 确定性给出（非模型自由路由）
 - [ ] [A] 路由规则：P0 → 转人工
 - [ ] [A] 路由规则：高危类型（服务器/数据库/网络核心/安全事件）→ 转人工
 - [ ] [A] 路由规则：`best_match_score < MATCH_THRESHOLD(0.42)` → 转人工
 - [ ] [A] 路由规则：`auto_resolvable=False` → 转人工
 - [ ] [A] 否则 → 自动闭环；`decision_reason` 记录命中原因
-- [ ] [A] `auto_resolve`：生成 Markdown 解决步骤，状态→已解决，mode=自动闭环
-- [ ] [A] `escalate_human`：按 fault_type 分派工程师（兜底按负载），状态→转人工，生成通知消息
+- [ ] [A] 处置 Agent（`resolver`）：生成 Markdown 解决步骤，状态→已解决，mode=自动闭环
+- [ ] [A] 处置 Agent（`resolver`）：按 fault_type 分派工程师（兜底按负载），状态→转人工，生成通知消息
+- [ ] [A] **审核 Agent（`critic`）**：对自动闭环方案做上线前交叉审核（pass/reject），reject 退回处置 Agent 重做（`max_review_rounds=1` 防死循环）
 - [ ] [A] `finalize` 汇总落库，图返回完整终态
 - [ ] [A] `scripts/test_graph.py` 直跑图，5 条样例两类分支均覆盖
 - [ ] [A] 未使用 CrewAI/Agno/AutoGen 等重型框架（依赖清单可证）

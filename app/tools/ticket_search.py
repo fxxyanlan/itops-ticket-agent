@@ -11,6 +11,7 @@ from difflib import SequenceMatcher
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants import STATUS_RESOLVED
 from app.db.base import session_scope
 from app.db.models import Ticket
@@ -53,15 +54,29 @@ def similarity(query: str, candidate: str) -> float:
 
 
 def search_in_session(
-    session: Session, fault_type: str, keywords: str, top_k: int = 3
+    session: Session,
+    fault_type: str,
+    keywords: str,
+    top_k: int = 3,
+    candidate_limit: int | None = None,
 ) -> list[dict]:
-    """在给定会话中执行检索，返回按匹配分倒序的候选列表。"""
-    rows = session.scalars(
-        select(Ticket).where(Ticket.status == STATUS_RESOLVED, Ticket.fault_type == fault_type)
-    ).all()
+    """在给定会话中执行检索，返回按匹配分倒序的候选列表。
+
+    性能要点
+        只 SELECT 打分与展示所需的 5 个列，不实例化 ORM 实体——避免身份映射与
+        ORM instrumentation 开销（候选量大时这是主要成本）。候选集由
+        `settings.search_candidate_limit` 兜底限制，防止极端数据量下无界扫描。
+    """
+    limit = int(candidate_limit if candidate_limit is not None else settings.search_candidate_limit)
+    stmt = (
+        select(Ticket.id, Ticket.title, Ticket.description, Ticket.fault_type, Ticket.resolution)
+        .where(Ticket.status == STATUS_RESOLVED, Ticket.fault_type == fault_type)
+        .order_by(Ticket.id.desc())
+        .limit(max(1, limit))
+    )
 
     scored: list[dict] = []
-    for row in rows:
+    for row in session.execute(stmt).all():
         # 标题与描述分别比较取较高分，避免长描述稀释相似度
         score = max(
             similarity(keywords, row.title or ""),
