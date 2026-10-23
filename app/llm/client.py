@@ -29,7 +29,13 @@ PARSE_SYSTEM_PROMPT = f"""你是 IT 运维工单解析助手。请从用户描�
 - user_contact: 用户联系方式，没有则为 null
 - summary: 一句话问题摘要
 - confidence: 0~1 的小数，表示你对 fault_type 和 urgency 判断的整体把握。
-  描述清晰、关键词明确时给 0.8 以上；描述模糊、信息不足或存在歧义时给 0.5 以下。"""
+  描述清晰、关键词明确时给 0.8 以上；描述模糊、信息不足或存在歧义时给 0.5 以下。
+同时顺带判定该工单能否自动解决，补充三个字段：
+- auto_resolvable: true/false。常见且有标准处置流程的软性问题（打印机脱机、密码重置、邮箱配置、客户端卡顿等）→ true；
+  服务器/数据库/网络核心/安全事件、业务中断、需现场处理或更换硬件 → false；
+  描述中出现冒烟、冒火、着火、漏电、触电、爆炸等安全词时一律 false。
+- classify_reason: 判定理由，30 字以内
+- classify_confidence: 0~1，表示你对这条判定的把握，信息不足时给 0.5 以下"""
 
 CLASSIFY_SYSTEM_PROMPT = """你是 IT 运维工单分类助手，判断工单是否属于【可自动解决】。
 只输出 JSON：{"auto_resolvable": true/false, "reason": "判定理由(30字内)", "confidence": 0~1}
@@ -113,7 +119,7 @@ class LLMClient:
                         {"role": "user", "content": f"用户描述：{description}\n联系方式：{contact or '未提供'}"},
                     ],
                     json_mode=True,
-                    max_tokens=400,
+                    max_tokens=550,
                 )
                 data = extract_json(content)
                 if data:
@@ -136,6 +142,11 @@ class LLMClient:
             user_contact=(str(data.get("user_contact")).strip() or None) if data.get("user_contact") else contact,
             summary=str(data.get("summary") or "").strip(),
             confidence=clamp_confidence(data.get("confidence")),
+            auto_resolvable=(
+                bool(data["auto_resolvable"]) if data.get("auto_resolvable") is not None else None
+            ),
+            classify_reason=str(data.get("classify_reason") or "").strip(),
+            classify_confidence=clamp_confidence(data.get("classify_confidence")),
         )
 
     # ------------------------------------------------------------------ #

@@ -30,6 +30,9 @@ class TicketState(TypedDict, total=False):
     auto_resolvable: bool | None
     classify_reason: str | None
     classify_confidence: float | None  # 分类判断的置信度（0~1）
+    intake_auto_resolvable: bool | None  # 解析阶段顺带判定的可自动解决性（None=未判定）
+    intake_classify_reason: str | None
+    intake_classify_confidence: float | None
 
     # --- 入口规则判级 ---
     rule_urgency: str | None

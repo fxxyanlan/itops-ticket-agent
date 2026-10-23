@@ -20,6 +20,13 @@ class TicketParseResult(BaseModel):
     confidence: float = Field(
         default=0.5, ge=0.0, le=1.0, description="本次解析的整体置信度（0~1）"
     )
+    auto_resolvable: bool | None = Field(
+        default=None, description="顺带判定的可自动解决性；为 None 表示未判定"
+    )
+    classify_reason: str = Field(default="", description="可自动解决性判定理由")
+    classify_confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="可自动解决性判定的置信度（0~1）"
+    )
 
 
 class ClassifyResult(BaseModel):

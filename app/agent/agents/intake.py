@@ -68,6 +68,11 @@ def run(state: TicketState) -> dict:
         "rule_matched_keywords": list(assessment.matched_keywords),
         "device_id": result.device_id or state.get("device_id"),
         "user_contact": result.user_contact or state.get("user_contact"),
+        "intake_auto_resolvable": result.auto_resolvable,
+        "intake_classify_reason": result.classify_reason,
+        "intake_classify_confidence": (
+            result.classify_confidence if result.auto_resolvable is not None else None
+        ),
         "agent_trace": [
             trace_entry(
                 LABEL,

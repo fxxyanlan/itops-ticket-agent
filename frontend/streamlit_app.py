@@ -9,6 +9,7 @@ Streamlit 把脚本目录加入 sys.path 后会导致 `import app.config` 解析
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -47,6 +48,76 @@ def api(method: str, path: str, **kwargs):
         return None, f"后端返回错误 {exc.response.status_code}：{detail}"
     except Exception as exc:  # noqa: BLE001
         return None, f"请求异常：{exc}"
+
+
+def latest_state(ticket_id: int) -> dict:
+    """从处理日志里取最后一份状态快照（收尾日志的 detail 即完整 state）。"""
+    logs, _ = api("GET", f"/api/tickets/{ticket_id}/logs?limit=200")
+    for entry in reversed(logs or []):
+        detail = entry.get("detail")
+        if isinstance(detail, str):
+            try:
+                detail = json.loads(detail)
+            except ValueError:
+                continue
+        if isinstance(detail, dict) and detail:
+            return detail
+    return {}
+
+
+def submit_async(payload: dict):
+    """异步提交并轮询到终态，返回与同步接口一致的渲染结构。"""
+    created, error = api("POST", "/api/tickets/async", json=payload)
+    if error:
+        return None, error
+
+    data = created["data"]
+    ticket_id = data["ticket_id"]
+    fast_path = bool(data.get("fast_path"))
+
+    if not fast_path:
+        progress = st.progress(0, text="已受理，后台 Agent 正在处理...")
+        started = time.time()
+        terminal = False
+        for _ in range(180):
+            status, status_error = api("GET", f"/api/tickets/{ticket_id}/status")
+            if status_error:
+                progress.empty()
+                return None, status_error
+            terminal = bool(status["data"].get("terminal"))
+            if terminal:
+                break
+            elapsed = int(time.time() - started)
+            progress.progress(
+                min(95, int(elapsed / 90 * 100)),
+                text=f"处理中：{status['data'].get('ticket_status')}（{elapsed}s）",
+            )
+            time.sleep(0.5)
+        progress.empty()
+        if not terminal:
+            return None, f"处理超时，请到工单列表查看 #{ticket_id} 的结果"
+
+    ticket, ticket_error = api("GET", f"/api/tickets/{ticket_id}")
+    if ticket_error:
+        return None, ticket_error
+
+    state = latest_state(ticket_id)
+    if fast_path:
+        state = {
+            **state,
+            "decision": "human",
+            "urgency": "P0",
+            "fault_type": ticket["data"].get("fault_type"),
+            "decision_reason": ticket["data"].get("decision_reason") or "入口安全闸门",
+        }
+    return {
+        "data": {
+            "ticket": ticket["data"],
+            "state": state,
+            "fast_path": fast_path,
+            "safety_alert": data.get("safety_alert", ""),
+        }
+    }, None
 
 
 # --------------------------------------------------------------------------- #
@@ -99,13 +170,13 @@ with tab_submit:
         if not description.strip():
             st.warning("请先填写故障描述")
         else:
-            with st.spinner("Agent 正在处理：解析 → 分类 → 工具调用 → 分支决策..."):
+            with st.spinner("已提交，Agent 正在后台处理：解析 → 分类 → 工具调用 → 分支决策..."):
                 payload = {"description": description.strip()}
                 if contact.strip():
                     payload["user_contact"] = contact.strip()
                 if device_id.strip():
                     payload["device_id"] = device_id.strip()
-                result, error = api("POST", "/api/tickets", json=payload)
+                result, error = submit_async(payload)
             st.session_state["submit_result"] = result
             st.session_state["submit_error"] = error
             st.session_state["submit_desc"] = description.strip()
