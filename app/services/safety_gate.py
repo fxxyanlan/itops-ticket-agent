@@ -142,6 +142,14 @@ def _clean_text(text: str) -> str:
     return cleaned
 
 
+def sanitize_for_llm(text: str) -> str:
+    """把已知非故障术语替换成中性说法，避免模型把「冒烟测试」判成火灾。"""
+    cleaned = text or ""
+    for phrase in _EXCEPTION_PHRASES:
+        cleaned = cleaned.replace(phrase, "软件测试")
+    return cleaned
+
+
 def _is_negated(text: str, index: int) -> bool:
     """关键词紧邻否定词时视为否定表达。
 

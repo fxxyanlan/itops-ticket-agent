@@ -96,8 +96,12 @@ def plan_next(state: TicketState) -> tuple[str, str]:
     if not state.get("fault_type") or not state.get("title"):
         return "intake", "缺少结构化工单字段，先由解析 Agent 抽取"
 
-    # 1.1) 解析置信度不足 → 跳过分类和检索，直接进入处置转人工
-    if _is_low_confidence(state.get("parse_confidence")):
+    # 1.1) 已判定转人工 → 收尾（否则低置信度规则会反复进入处置 Agent）
+    if state.get("decision") == "human":
+        return "finalize", "已判定转人工，进入收尾归档"
+
+    # 1.2) 解析置信度不足 → 跳过分类和检索，直接进入处置转人工
+    if state.get("decision") is None and _is_low_confidence(state.get("parse_confidence")):
         return "resolver", "解析置信度低于阈值，跳过检索直接转人工"
 
     # 2) 未判定可自动解决性 → 分类 Agent
@@ -105,7 +109,11 @@ def plan_next(state: TicketState) -> tuple[str, str]:
         return "triage", "尚未判定可自动解决性，交由分类 Agent 判定"
 
     # 2.1) 分类置信度不足 → 跳过检索，直接进入处置转人工
-    if state.get("auto_resolvable") is False and _is_low_confidence(state.get("classify_confidence")):
+    if (
+        state.get("decision") is None
+        and state.get("auto_resolvable") is False
+        and _is_low_confidence(state.get("classify_confidence"))
+    ):
         return "resolver", "分类置信度低于阈值，跳过检索直接转人工"
 
     # 3) 缺少历史方案证据 → 检索 Agent

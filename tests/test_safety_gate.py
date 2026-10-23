@@ -8,7 +8,12 @@
 """
 
 from app.agent.routing import decide, plan_next
-from app.services.safety_gate import assess_urgency, format_urgency_guide, more_severe
+from app.services.safety_gate import (
+    assess_urgency,
+    format_urgency_guide,
+    more_severe,
+    sanitize_for_llm,
+)
 
 
 def test_fire_keyword_triggers_p0_fast_path():
@@ -46,6 +51,13 @@ def test_room_name_with_negation_char_still_triggers():
     assessment = assess_urgency("无尘室的服务器冒烟了")
     assert assessment.level == "P0"
     assert assessment.fast_path is True
+
+
+def test_smoke_test_term_is_sanitized_before_llm():
+    sanitized = sanitize_for_llm("冒烟测试环境跑一下打印机的联调")
+    assert "冒烟测试" not in sanitized
+    assert "软件测试" in sanitized
+    assert "打印机" in sanitized
 
 
 def test_urgency_levels_have_descriptions_and_confidence():
@@ -113,6 +125,19 @@ def test_low_parse_confidence_skips_retrieval():
     next_agent, reason = plan_next(state)
     assert next_agent == "resolver"
     assert "跳过检索" in reason
+
+
+def test_human_decision_goes_to_finalize_without_looping():
+    state = {
+        "title": "电脑很慢",
+        "fault_type": "其他",
+        "parse_confidence": 0.30,
+        "decision": "human",
+        "final_status": "转人工",
+    }
+    next_agent, reason = plan_next(state)
+    assert next_agent == "finalize"
+    assert "收尾" in reason
 
 
 def test_fire_ticket_fast_path_api(client):

@@ -5,7 +5,7 @@ from app.agent.state import TicketState
 from app.constants import NODE_INTAKE
 from app.llm.client import get_llm_client
 from app.services import ticket_service
-from app.services.safety_gate import assess_urgency, level_rank, more_severe
+from app.services.safety_gate import assess_urgency, level_rank, more_severe, sanitize_for_llm
 
 NAME = "intake"
 LABEL = NODE_INTAKE
@@ -16,7 +16,7 @@ def run(state: TicketState) -> dict:
     """调用 LLM 抽取字段并回写工单。"""
     ticket_id = int(state["ticket_id"])
     description = state.get("raw_description") or ""
-    result = get_llm_client().extract_ticket(description, state.get("user_contact"))
+    result = get_llm_client().extract_ticket(sanitize_for_llm(description), state.get("user_contact"))
 
     # 入口规则与模型各判一次：取更严重的一档（只升不降）
     assessment = assess_urgency(description)

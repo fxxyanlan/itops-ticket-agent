@@ -6,6 +6,7 @@ from app.config import settings
 from app.constants import FAULT_TYPE_OTHER, NODE_TRIAGE
 from app.llm.client import get_llm_client
 from app.llm.schemas import TicketParseResult
+from app.services.safety_gate import sanitize_for_llm
 
 NAME = "triage"
 LABEL = NODE_TRIAGE
@@ -23,7 +24,9 @@ def run(state: TicketState) -> dict:
         user_contact=state.get("user_contact"),
         summary=(state.get("raw_description") or "")[:60],
     )
-    result = get_llm_client().classify(parsed, state.get("raw_description") or "")
+    result = get_llm_client().classify(
+        parsed, sanitize_for_llm(state.get("raw_description") or "")
+    )
 
     # 置信度不足时直接按「必须人工」处理，不给自动闭环留机会
     threshold = settings.confidence_threshold
