@@ -121,13 +121,35 @@ with tab_submit:
         mode_icon = MODE_ICONS.get(ticket["resolution_mode"] or "", "")
         if st.session_state.get("submit_desc"):
             st.caption(f"最近提交：{st.session_state['submit_desc']}")
-        st.success(f"{mode_icon} 处理完成，工单 #{ticket['id']} 当前状态：{ticket['status']}")
+        if last_result["data"].get("fast_path"):
+            st.warning(
+                f"已触发入口安全闸门，工单 #{ticket['id']} 未调用大模型，"
+                f"直接转人工：{last_result['data'].get('safety_alert', '')}"
+            )
+        else:
+            st.success(f"{mode_icon} 处理完成，工单 #{ticket['id']} 当前状态：{ticket['status']}")
 
         info_cols = st.columns(4)
         info_cols[0].metric("故障类型", ticket["fault_type"])
         info_cols[1].metric("紧急等级", ticket["urgency"])
         info_cols[2].metric("处理模式", ticket["resolution_mode"] or "-")
-        info_cols[3].metric("最高匹配度", f"{state.get('best_match_score', 0):.2f}")
+        if last_result["data"].get("fast_path"):
+            info_cols[3].metric("规则置信度", f"{state.get('rule_confidence', 0):.2f}")
+        else:
+            info_cols[3].metric("最高匹配度", f"{state.get('best_match_score', 0):.2f}")
+
+        confidence_parts = []
+        for label, key in (
+            ("规则置信度", "rule_confidence"),
+            ("解析置信度", "parse_confidence"),
+            ("分类置信度", "classify_confidence"),
+            ("审核置信度", "review_confidence"),
+        ):
+            value = state.get(key)
+            if isinstance(value, (int, float)):
+                confidence_parts.append(f"{label} {value:.2f}")
+        if confidence_parts:
+            st.caption("｜".join(confidence_parts))
 
         st.markdown(f"**决策原因**：{ticket['decision_reason']}")
         if ticket["assignee"]:

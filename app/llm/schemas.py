@@ -17,6 +17,9 @@ class TicketParseResult(BaseModel):
     device_id: str | None = Field(default=None, description="设备编号")
     user_contact: str | None = Field(default=None, description="用户联系方式")
     summary: str = Field(default="", description="一句话问题摘要")
+    confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="本次解析的整体置信度（0~1）"
+    )
 
 
 class ClassifyResult(BaseModel):
@@ -24,6 +27,9 @@ class ClassifyResult(BaseModel):
 
     auto_resolvable: bool = Field(description="是否属于可自动解决的工单")
     reason: str = Field(default="", description="判定理由")
+    confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="本次分类判定的置信度（0~1）"
+    )
 
 
 class ReviewResult(BaseModel):
@@ -31,6 +37,9 @@ class ReviewResult(BaseModel):
 
     verdict: str = Field(default="pass", description="审核结论：pass / reject")
     feedback: str = Field(default="", description="审核意见")
+    confidence: float = Field(
+        default=0.5, ge=0.0, le=1.0, description="本次审核判定的置信度（0~1）"
+    )
 
 
 class ToolCall(BaseModel):

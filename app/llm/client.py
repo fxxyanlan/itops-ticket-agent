@@ -15,23 +15,29 @@ from app.constants import FAULT_TYPES, FAULT_TYPE_OTHER, URGENCIES, URGENCY_DEFA
 from app.llm import mock
 from app.llm.schemas import ClassifyResult, LLMResponse, ReviewResult, TicketParseResult, ToolCall, extract_json
 from app.logging_config import get_logger
+from app.services.safety_gate import clamp_confidence, format_urgency_guide
 
 logger = get_logger("itops.llm")
 
-PARSE_SYSTEM_PROMPT = """你是 IT 运维工单解析助手。请从用户描述中抽取结构化字段，只输出 JSON（不要任何解释或 markdown 包裹）。
+PARSE_SYSTEM_PROMPT = f"""你是 IT 运维工单解析助手。请从用户描述中抽取结构化字段，只输出 JSON（不要任何解释或 markdown 包裹）。
 字段要求：
 - title: 工单标题，20 字以内
 - fault_type: 必须是以下之一：打印机/账号权限/网络/硬件/软件/服务器/邮箱/数据库/安全事件/其他
-- urgency: 必须是 P0/P1/P2/P3 之一（P0=业务中断/宕机/数据泄露等灾难级；P1=严重影响工作；P2=一般故障；P3=咨询）
+- urgency: 必须是 P0/P1/P2/P3 之一，判定标准如下：
+{format_urgency_guide()}
 - device_id: 设备编号（形如 PC-1024、SRV-DB-01），没有则为 null；注意不要填设备型号
 - user_contact: 用户联系方式，没有则为 null
-- summary: 一句话问题摘要"""
+- summary: 一句话问题摘要
+- confidence: 0~1 的小数，表示你对 fault_type 和 urgency 判断的整体把握。
+  描述清晰、关键词明确时给 0.8 以上；描述模糊、信息不足或存在歧义时给 0.5 以下。"""
 
 CLASSIFY_SYSTEM_PROMPT = """你是 IT 运维工单分类助手，判断工单是否属于【可自动解决】。
-只输出 JSON：{"auto_resolvable": true/false, "reason": "判定理由(30字内)"}
+只输出 JSON：{"auto_resolvable": true/false, "reason": "判定理由(30字内)", "confidence": 0~1}
 判定准则：
 - 常见且有标准处置流程的软性问题（打印机脱机、密码重置、客户端卡顿、邮箱配置等）→ true
-- 服务器/数据库/网络核心/安全事件等高风险问题，或业务中断、需要现场/更换硬件 → false"""
+- 服务器/数据库/网络核心/安全事件等高风险问题，或业务中断、需要现场/更换硬件 → false
+- 描述中出现冒烟、冒火、着火、漏电、触电、爆炸等安全词时，无论看起来像什么普通故障，都必须 → false
+- confidence 表示你对本次判定的把握：依据充分给 0.8 以上，信息不足给 0.5 以下"""
 
 RESOLUTION_SYSTEM_PROMPT = """你是 IT 运维工程师。请依据历史工单的处置经验，为该工单生成清晰的解决步骤。
 要求：使用 Markdown，先给「设备信息」与「匹配到的历史工单」，再给分步骤的「建议处理步骤」，最后附一句风险提示。不要输出多余寒暄。"""
@@ -39,12 +45,13 @@ RESOLUTION_SYSTEM_PROMPT = """你是 IT 运维工程师。请依据历史工单�
 NOTIFY_SYSTEM_PROMPT = """你是 IT 运维调度助手。请为转人工的工单生成一条简洁的通知消息，包含：工单号、标题、紧急等级、故障类型、转人工原因、分派工程师及其联系方式、预计响应时长，并说明已同步到运维值班群。只输出通知正文。"""
 
 CRITIC_SYSTEM_PROMPT = """你是 IT 运维方案审核专家，负责对「自动闭环」方案做上线前自检。
-只输出 JSON：{"verdict": "pass" 或 "reject", "feedback": "审核意见(40字内)"}
+只输出 JSON：{"verdict": "pass" 或 "reject", "feedback": "审核意见(40字内)", "confidence": 0~1}
 审核要点：
 - 方案步骤是否完整、可执行，且与故障类型一致；
 - 是否体现了设备信息与历史工单依据；
 - 是否存在高危操作或未提示的风险。
-全部满足返回 pass；任一不满足返回 reject，并给出可执行的修改意见。"""
+全部满足返回 pass；任一不满足返回 reject，并给出可执行的修改意见。
+confidence 表示你对本次审核结论的把握，依据不足时给 0.5 以下。"""
 
 
 class LLMClient:
@@ -119,6 +126,7 @@ class LLMClient:
             device_id=(str(data["device_id"]).strip() or None) if data.get("device_id") else None,
             user_contact=(str(data.get("user_contact")).strip() or None) if data.get("user_contact") else contact,
             summary=str(data.get("summary") or "").strip(),
+            confidence=clamp_confidence(data.get("confidence")),
         )
 
     # ------------------------------------------------------------------ #
@@ -146,6 +154,7 @@ class LLMClient:
                     return ClassifyResult(
                         auto_resolvable=bool(data["auto_resolvable"]),
                         reason=str(data.get("reason") or ""),
+                        confidence=clamp_confidence(data.get("confidence")),
                     )
                 logger.warning("分类结果缺少 auto_resolvable，降级为规则分类")
             except Exception as exc:  # noqa: BLE001
@@ -265,7 +274,11 @@ class LLMClient:
                 data = extract_json(content)
                 verdict = str(data.get("verdict") or "").strip().lower()
                 if verdict in ("pass", "reject"):
-                    return ReviewResult(verdict=verdict, feedback=str(data.get("feedback") or ""))
+                    return ReviewResult(
+                        verdict=verdict,
+                        feedback=str(data.get("feedback") or ""),
+                        confidence=clamp_confidence(data.get("confidence")),
+                    )
                 logger.warning("审核结论非法（%s），降级为规则审核", verdict)
             except Exception as exc:  # noqa: BLE001
                 logger.error("模型审核失败，降级为规则审核：%s", exc)

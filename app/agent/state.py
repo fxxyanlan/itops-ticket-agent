@@ -23,10 +23,18 @@ class TicketState(TypedDict, total=False):
     fault_type: str | None
     urgency: str | None
     device_id: str | None
+    parse_confidence: float | None  # 解析判断的置信度（0~1）
+    urgency_source: str | None  # 最终等级来源：模型 / 规则升级 / 模型+规则一致
 
     # --- 分类结果 ---
     auto_resolvable: bool | None
     classify_reason: str | None
+    classify_confidence: float | None  # 分类判断的置信度（0~1）
+
+    # --- 入口规则判级 ---
+    rule_urgency: str | None
+    rule_confidence: float | None
+    rule_matched_keywords: list[str] | None
 
     # --- 工具证据 ---
     matched_solutions: list[dict] | None  # 工具1：历史相似工单（None=未调用，[]=调用但无命中）
@@ -47,6 +55,7 @@ class TicketState(TypedDict, total=False):
     agent_trace: Annotated[list[dict], operator.add]  # 各 Agent 的协作轨迹
     critic_verdict: str | None  # 审核结论：pass | reject
     critic_feedback: str | None
+    review_confidence: float | None  # 审核判断的置信度（0~1）
     review_rounds: int  # 审核轮次（用于限制重试上限）
 
     # --- ReAct 循环控制 ---
@@ -70,6 +79,7 @@ def initial_state(ticket: dict) -> TicketState:
         agent_trace=[],
         critic_verdict=None,
         critic_feedback=None,
+        review_confidence=None,
         review_rounds=0,
         messages=[],
         iterations=0,
@@ -84,9 +94,16 @@ def public_snapshot(state: dict) -> dict[str, Any]:
         "title",
         "fault_type",
         "urgency",
+        "urgency_source",
         "device_id",
+        "rule_urgency",
+        "rule_confidence",
+        "rule_matched_keywords",
+        "parse_confidence",
         "auto_resolvable",
         "classify_reason",
+        "classify_confidence",
+        "review_confidence",
         "best_match_score",
         "decision",
         "decision_reason",

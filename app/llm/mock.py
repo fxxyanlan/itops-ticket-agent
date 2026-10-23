@@ -20,6 +20,7 @@ from app.constants import (
     URGENCY_DEFAULT,
 )
 from app.llm.schemas import ClassifyResult, LLMResponse, ReviewResult, TicketParseResult, ToolCall
+from app.services.safety_gate import assess_urgency
 
 # ===== 关键词规则 =====
 # 故障类型识别（顺序敏感：先匹配到的优先）
@@ -31,14 +32,15 @@ _FAULT_TYPE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("账号权限", ("密码", "账号", "账户", "权限", "vpn", "登录不了", "锁定", "解锁", "认证")),
     ("邮箱", ("邮箱", "邮件", "outlook", "smtp", "imap", "收不到信")),
     ("网络", ("网络", "断网", "网速", "wifi", "无线", "路由器", "连不上网", "无法上网", "ip 地址")),
-    ("硬件", ("投影仪", "显示器", "黑屏", "键盘", "鼠标", "硬盘", "内存", "风扇", "无信号", "电池")),
+    (
+        "硬件",
+        (
+            "投影仪", "显示器", "黑屏", "键盘", "鼠标", "硬盘", "内存", "风扇", "无信号", "电池",
+            "冒火", "着火", "起火", "冒烟", "焦味", "火花", "漏电", "触电",
+        ),
+    ),
     ("软件", ("软件", "客户端", "程序", "安装", "驱动", "闪退", "报错", "崩溃", "卡死")),
 ]
-
-# 紧急等级识别
-_P0_KEYWORDS = ("宕机", "瘫痪", "全部中断", "业务中断", "全公司", "数据泄露", "无法访问", "起火", "服务器down")
-_P1_KEYWORDS = ("紧急", "尽快", "严重", "大量", "影响工作", "无法使用", "急")
-_P3_KEYWORDS = ("咨询", "请问", "有空", "不急", "建议", "了解一下")
 
 # 从描述中抽取设备编号（排除「型号 xxx」，避免把设备型号误当资产编号）
 _DEVICE_RE = re.compile(r"\b([A-Za-z]{2,6}-\d{1,6})\b")
@@ -46,22 +48,13 @@ _MODEL_RE = re.compile(r"型号\s*\S+")
 _CONTEXT_RE = re.compile(re.escape(AGENT_CONTEXT_MARKER) + r"\s*(\{[^\n]*\})")
 
 
-def _detect_fault_type(text: str) -> str:
+def _detect_fault_type(text: str) -> tuple[str, bool]:
+    """返回 (故障类型, 是否命中类型关键词)。"""
     lowered = text.lower()
     for fault_type, keywords in _FAULT_TYPE_RULES:
         if any(keyword in lowered for keyword in keywords):
-            return fault_type
-    return FAULT_TYPE_OTHER
-
-
-def _detect_urgency(text: str) -> str:
-    if any(keyword in text for keyword in _P0_KEYWORDS):
-        return URGENCY_CRITICAL
-    if any(keyword in text for keyword in _P1_KEYWORDS):
-        return "P1"
-    if any(keyword in text for keyword in _P3_KEYWORDS):
-        return "P3"
-    return URGENCY_DEFAULT
+            return fault_type, True
+    return FAULT_TYPE_OTHER, False
 
 
 def _detect_device_id(text: str) -> str | None:
@@ -71,18 +64,27 @@ def _detect_device_id(text: str) -> str | None:
 
 
 def parse_ticket(description: str, contact: str | None = None) -> TicketParseResult:
-    """规则版工单解析。"""
+    """规则版工单解析：类型用关键词，等级用入口安全闸门的同一套规则。"""
     text = (description or "").strip()
-    fault_type = _detect_fault_type(text)
+    fault_type, type_matched = _detect_fault_type(text)
+    assessment = assess_urgency(text)
     title = re.split(r"[，。！？,\.!\?；;\n]", text)[0].strip()[:24] or f"{fault_type}类故障"
+    # 类型判断的把握占 60%，等级判断的把握占 40%
+    type_confidence = 0.90 if type_matched else 0.30
+    confidence = round(type_confidence * 0.6 + assessment.confidence * 0.4, 2)
     return TicketParseResult(
         title=title,
         fault_type=fault_type,
-        urgency=_detect_urgency(text),
+        urgency=assessment.level,
         device_id=_detect_device_id(text),
         user_contact=contact,
         summary=text[:60],
+        confidence=confidence,
     )
+
+
+# 常见、有标准处置流程的类型：规则版分类给出较高置信度
+_COMMON_AUTO_TYPES = {"打印机", "账号权限", "邮箱", "软件", "网络", "硬件"}
 
 
 def classify(parsed: TicketParseResult, description: str = "") -> ClassifyResult:
@@ -93,14 +95,30 @@ def classify(parsed: TicketParseResult, description: str = "") -> ClassifyResult
         return ClassifyResult(
             auto_resolvable=False,
             reason=f"故障类型「{parsed.fault_type}」属于高危场景，必须人工介入",
+            confidence=0.95,
         )
     if parsed.urgency == URGENCY_CRITICAL:
-        return ClassifyResult(auto_resolvable=False, reason="紧急等级为 P0，需人工立即响应")
+        return ClassifyResult(
+            auto_resolvable=False,
+            reason="紧急等级为 P0，需人工立即响应",
+            confidence=0.95,
+        )
     if any(word in description for word in ("派工程师", "上门", "现场", "更换硬件")):
-        return ClassifyResult(auto_resolvable=False, reason="用户明确要求现场/人工处理")
+        return ClassifyResult(
+            auto_resolvable=False,
+            reason="用户明确要求现场/人工处理",
+            confidence=0.90,
+        )
+    if parsed.fault_type in _COMMON_AUTO_TYPES:
+        return ClassifyResult(
+            auto_resolvable=True,
+            reason=f"常见「{parsed.fault_type}」类问题，可按历史方案自助处理",
+            confidence=0.75,
+        )
     return ClassifyResult(
         auto_resolvable=True,
-        reason=f"常见「{parsed.fault_type}」类问题，可按历史方案自助处理",
+        reason=f"「{parsed.fault_type}」类问题信息不足，仅能按通用流程尝试",
+        confidence=0.50,
     )
 
 
@@ -220,7 +238,11 @@ def review_resolution(
 ) -> ReviewResult:
     """规则版方案审核：方案非空 + 有历史工单依据 → 通过。"""
     if not (resolution or "").strip():
-        return ReviewResult(verdict="reject", feedback="方案为空，需重新生成")
+        return ReviewResult(verdict="reject", feedback="方案为空，需重新生成", confidence=0.95)
     if not matches:
-        return ReviewResult(verdict="reject", feedback="缺少历史工单依据，需重新检索")
-    return ReviewResult(verdict="pass", feedback="方案步骤完整且具备历史工单依据，审核通过")
+        return ReviewResult(verdict="reject", feedback="缺少历史工单依据，需重新检索", confidence=0.80)
+    return ReviewResult(
+        verdict="pass",
+        feedback="方案步骤完整且具备历史工单依据，审核通过",
+        confidence=0.85,
+    )

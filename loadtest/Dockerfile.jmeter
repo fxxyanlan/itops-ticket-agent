@@ -1,0 +1,26 @@
+# JMeter CLI 镜像（非 GUI）—— 可选，平时不需要构建。
+#
+# 本机已装 JMeter 时，压测直接用本机 JMeter CLI 即可，不必构建本镜像；
+# compose 里也已不再包含 jmeter 服务，所以 `docker compose build` 不会下载 JMeter。
+# 仅在以下场景才需要它：CI / 无本机 JMeter 的环境、或想固定 JMeter 版本时。
+#
+# 构建：docker build -f loadtest/Dockerfile.jmeter -t local/jmeter:5.6.3 loadtest
+FROM eclipse-temurin:21-jre
+
+ARG JMETER_VERSION=5.6.3
+ENV JMETER_HOME=/opt/apache-jmeter-${JMETER_VERSION}
+ENV PATH="${JMETER_HOME}/bin:${PATH}"
+
+# 国内网络慢时可把下载地址换成镜像源：
+#   https://mirrors.aliyun.com/apache/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL -o /tmp/jmeter.tgz \
+      "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz" \
+ && tar -xzf /tmp/jmeter.tgz -C /opt \
+ && rm /tmp/jmeter.tgz \
+ && jmeter --version
+
+WORKDIR /work
+ENTRYPOINT ["jmeter"]

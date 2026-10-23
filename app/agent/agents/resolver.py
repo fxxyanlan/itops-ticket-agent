@@ -51,7 +51,13 @@ def _auto_resolve(state: TicketState, reason: str) -> dict:
         ticket_id,
         LABEL,
         f"✅ 自动闭环：工单状态 → 已解决（{reason}）",
-        detail={"decision_reason": reason, "matched_ticket": matches[0]["ticket_id"] if matches else None},
+        detail={
+            "decision_reason": reason,
+            "matched_ticket": matches[0]["ticket_id"] if matches else None,
+            "parse_confidence": state.get("parse_confidence"),
+            "classify_confidence": state.get("classify_confidence"),
+            "review_confidence": state.get("review_confidence"),
+        },
     )
     return {
         "decision": "auto",
@@ -81,7 +87,12 @@ def _escalate_human(state: TicketState, reason: str) -> dict:
         LABEL,
         f"⚠️ 转人工：工单状态 → 转人工｜原因：{reason}｜分派：{(assignee or {}).get('name', '待定')}",
         level="WARN",
-        detail={"decision_reason": reason, "assignee": assignee},
+        detail={
+            "decision_reason": reason,
+            "assignee": assignee,
+            "parse_confidence": state.get("parse_confidence"),
+            "classify_confidence": state.get("classify_confidence"),
+        },
     )
     return {
         "decision": "human",

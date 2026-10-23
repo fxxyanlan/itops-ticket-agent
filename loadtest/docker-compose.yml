@@ -1,0 +1,51 @@
+# 压测环境编排：只把「被测后端」放进容器 —— 目的是数据库隔离，跟 JMeter 无关。
+#
+# 为什么容器里没有 JMeter
+#   本机已经装了 JMeter，直接用它 CLI 打容器映射出来的 8010 端口即可。
+#   隔离的本质是「后端指向哪个数据库」，不是「JMeter 跑在哪」，
+#   因此完全不需要在容器里再下一份 JMeter（本文件也不含 jmeter 服务，build 不会下载它）。
+#
+# 隔离原则
+#   后端 DATABASE_URL 指向容器内 /data/loadtest.db，且不挂载宿主机目录，
+#   所以 data/itops.db、data/benchmark.db 不会被写入；docker compose down 后数据自动消失。
+#   LLM_MODE=mock 保证零外呼、零 token。
+#
+# 用法（在 loadtest/ 目录下执行）
+#   docker compose up -d --wait api    # 只构建/启动 api，不会下载 JMeter
+#   （然后用本机 JMeter CLI 压测 127.0.0.1:8010，见 README / 上手指引）
+#   docker compose down                # 销毁容器 → 一次性测试数据一起消失
+#
+# 想验证「真实代码路径」（保持 real + 本地假模型）时再启用 mock-llm：
+#   docker compose --profile mock-llm up -d mock-llm
+#   （并把 api 的 LLM_MODE 改成 real、DEEPSEEK_BASE_URL 指向 http://mock-llm:8001/v1）
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: loadtest/Dockerfile.api
+    image: local/itops-api:test
+    environment:
+      DATABASE_URL: sqlite:////data/loadtest.db
+      LLM_MODE: mock
+      BENCH_TICKETS: "20000"
+      BENCH_DEVICES: "2000"
+    ports:
+      - "8010:8000"          # 本机 JMeter / curl / Swagger 都走 http://127.0.0.1:8010
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
+
+  # 可选：本地假的 OpenAI 兼容接口（固定假数据，零 token）。
+  # 只有想在 real 代码路径下压测时才需要；默认 LLM_MODE=mock 时用不到。
+  mock-llm:
+    image: python:3.13-slim
+    profiles: ["mock-llm"]
+    working_dir: /work
+    volumes:
+      - ./:/work
+    command: ["python", "/work/mock_llm_server.py", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"

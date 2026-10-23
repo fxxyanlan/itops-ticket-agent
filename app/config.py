@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # --- 业务参数 ---
     match_threshold: float = 0.42
+    confidence_threshold: float = 0.6  # 任一判断置信度低于该值时，保守转人工
     max_iterations: int = 6
     max_review_rounds: int = 1  # 审核 Agent 最多触发的「退回重做」次数
 

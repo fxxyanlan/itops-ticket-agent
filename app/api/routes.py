@@ -10,12 +10,14 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from app.config import settings
-from app.constants import STATUS_HUMAN, STATUS_RESOLVED
+from app.constants import MODE_HUMAN, STATUS_HUMAN, STATUS_RESOLVED
 from app.db.base import probe_db
 from app.logging_config import get_logger
 from app.schemas.ticket import ApiResponse, TicketCreate, TicketStatusFilter, TicketTaskStatus
 from app.services import cache, metrics, task_registry, ticket_service
 from app.services.agent_runner import run_agent
+from app.services.log_service import write_log
+from app.services.safety_gate import UrgencyAssessment, assess_urgency, build_safety_notification
 
 router = APIRouter(prefix="/api", tags=["itops"])
 logger = get_logger("itops.api")
@@ -47,6 +49,7 @@ def health() -> ApiResponse:
             "model": settings.deepseek_model,
             "database": db_status,
             "match_threshold": settings.match_threshold,
+            "confidence_threshold": settings.confidence_threshold,
         }
     )
 
@@ -63,13 +66,111 @@ def get_metrics() -> ApiResponse:
     )
 
 
+def _escalate_safety_ticket(ticket: dict, assessment: UrgencyAssessment) -> dict:
+    """入口快速通道：不调用大模型，直接按 P0 转人工并生成应急通知。"""
+    ticket_id = int(ticket["id"])
+    fault_type = assessment.fault_type_hint or "其他"
+    reason = f"入口安全闸门：{assessment.reason}"
+
+    updated = ticket_service.update_parsed_fields(
+        ticket_id,
+        title=ticket.get("title") or (ticket.get("description") or "")[:24],
+        fault_type=fault_type,
+        urgency="P0",
+    ) or ticket
+    assignee = ticket_service.pick_engineer(fault_type)
+    notify_message = build_safety_notification(ticket_id, assessment, assignee)
+    updated = ticket_service.update_status(
+        ticket_id,
+        STATUS_HUMAN,
+        resolution_mode=MODE_HUMAN,
+        assignee=(assignee or {}).get("name"),
+        notify_message=notify_message,
+        decision_reason=reason,
+    ) or updated
+
+    detail = {
+        "rule_urgency": assessment.level,
+        "rule_confidence": assessment.confidence,
+        "matched_keywords": list(assessment.matched_keywords),
+        "confidence_threshold": settings.confidence_threshold,
+        "fast_path": True,
+        "fault_type": fault_type,
+    }
+    write_log(
+        ticket_id,
+        "安全闸门",
+        f"命中最高危机规则，跳过模型直接转人工｜关键词："
+        f"{'、'.join(assessment.matched_keywords) or '无'}｜置信度 {assessment.confidence:.2f}",
+        level="WARN",
+        detail=detail,
+    )
+    logger.warning("入口安全闸门触发：工单 #%s，关键词=%s", ticket_id, assessment.matched_keywords)
+
+    state = {
+        "ticket_id": ticket_id,
+        "title": updated.get("title"),
+        "fault_type": fault_type,
+        "urgency": "P0",
+        "urgency_source": "入口规则",
+        "device_id": updated.get("device_id"),
+        "rule_urgency": assessment.level,
+        "rule_confidence": assessment.confidence,
+        "rule_matched_keywords": list(assessment.matched_keywords),
+        "parse_confidence": assessment.confidence,
+        "auto_resolvable": False,
+        "classify_reason": reason,
+        "classify_confidence": None,
+        "review_confidence": None,
+        "best_match_score": 0.0,
+        "decision": "human",
+        "decision_reason": reason,
+        "final_status": STATUS_HUMAN,
+        "critic_verdict": None,
+        "review_rounds": 0,
+        "iterations": 0,
+        "safety_fast_path": True,
+        "agent_trace": [
+            {
+                "agent": "安全闸门",
+                "action": "命中最高危机关键词，跳过模型直接转人工",
+                "keywords": list(assessment.matched_keywords),
+                "confidence": assessment.confidence,
+            }
+        ],
+    }
+    return {
+        "ticket": updated,
+        "state": state,
+        "resolution": None,
+        "notify_message": notify_message,
+        "fast_path": True,
+        "safety_alert": reason,
+    }
+
+
+def _create_and_escalate_safety(payload: TicketCreate, assessment: UrgencyAssessment) -> dict:
+    """先落库，再走入口快速通道。"""
+    ticket = ticket_service.create_ticket(
+        description=payload.description,
+        user_contact=payload.user_contact,
+        device_id=payload.device_id,
+    )
+    return _escalate_safety_ticket(ticket, assessment)
+
+
 @router.post("/tickets", response_model=ApiResponse)
 def create_ticket(payload: TicketCreate) -> ApiResponse:
     """提交工单：落库后立即同步跑完 Agent，返回终态结果。
 
-    该接口同步执行完整 Agent 闭环（mock 约 0.6s、真实模型数秒级），响应时间
-    受 Agent 编排主导，不适用 300ms 目标；如需快速受理请使用 `/api/tickets/async`。
+    P0 灾难级不调用大模型，直接走入口安全闸门转人工；其余工单同步执行完整
+    Agent 闭环（mock 约 0.6s、真实模型数秒级），不适用 300ms 目标。
     """
+    assessment = assess_urgency(payload.description)
+    if assessment.fast_path:
+        result = _create_and_escalate_safety(payload, assessment)
+        return ApiResponse(message="已触发紧急安全通道，工单已转人工", data=result)
+
     ticket = ticket_service.create_ticket(
         description=payload.description,
         user_contact=payload.user_contact,
@@ -97,7 +198,26 @@ def _run_agent_background(ticket_id: int) -> None:
 
 @router.post("/tickets/async", response_model=ApiResponse, status_code=202)
 def create_ticket_async(payload: TicketCreate, background: BackgroundTasks) -> ApiResponse:
-    """异步提交工单：立即返回 202，Agent 转后台执行，由状态接口轮询终态。"""
+    """异步提交工单：立即返回 202，Agent 转后台执行，由状态接口轮询终态。
+
+    P0 灾难级同样绕过 Agent，直接转人工，不占用后台任务。
+    """
+    assessment = assess_urgency(payload.description)
+    if assessment.fast_path:
+        result = _create_and_escalate_safety(payload, assessment)
+        ticket = result["ticket"]
+        logger.warning("异步提交触发安全闸门：#%s", ticket["id"])
+        return ApiResponse(
+            message="已触发紧急安全通道，工单已转人工",
+            data={
+                "ticket_id": ticket["id"],
+                "status": ticket["status"],
+                "poll_url": f"/api/tickets/{ticket['id']}/status",
+                "fast_path": True,
+                "safety_alert": result["safety_alert"],
+            },
+        )
+
     ticket = ticket_service.create_ticket(
         description=payload.description,
         user_contact=payload.user_contact,
@@ -187,8 +307,13 @@ def rerun_ticket(ticket_id: int) -> ApiResponse:
 
     与 `POST /api/tickets` 同为同步执行，不适用 300ms 目标。
     """
-    if ticket_service.get_ticket(ticket_id) is None:
+    ticket = ticket_service.get_ticket(ticket_id)
+    if ticket is None:
         raise HTTPException(status_code=404, detail=f"工单不存在：{ticket_id}")
+    assessment = assess_urgency(ticket.get("description") or "")
+    if assessment.fast_path:
+        result = _escalate_safety_ticket(ticket, assessment)
+        return ApiResponse(message="已触发紧急安全通道，工单已转人工", data=result)
     try:
         result = run_agent(ticket_id)
     except Exception as exc:  # noqa: BLE001

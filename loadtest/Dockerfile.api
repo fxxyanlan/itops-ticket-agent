@@ -1,0 +1,39 @@
+# 被测后端镜像：一次性测试环境（独立 SQLite + mock 模式，用完即弃）
+#
+# 构建（在项目根目录执行，context 必须是项目根，才能 COPY app/ 与 scripts/）：
+#   docker build -f loadtest/Dockerfile.api -t local/itops-api:test .
+#
+# 关键隔离点：
+#   1. DATABASE_URL 指向容器内 /data/loadtest.db —— 不挂载宿主机任何目录，
+#      所以 data/itops.db 与 data/benchmark.db 完全不受影响，容器删除即数据消失；
+#   2. LLM_MODE=mock —— 全程零外呼，不消耗任何真实 token。
+FROM python:3.13-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DATABASE_URL=sqlite:////data/loadtest.db \
+    LLM_MODE=mock \
+    BENCH_TICKETS=20000 \
+    BENCH_DEVICES=2000
+
+WORKDIR /app
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# 依赖单独一层，便于缓存
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+COPY scripts ./scripts
+
+# /data 必须存在（DATABASE_URL 指向它）；logs 目录由 app/logging_config.py 自行创建
+RUN mkdir -p /data
+
+EXPOSE 8000
+
+# 启动即生成一份独立的基准数据到容器内 /data（不碰宿主机），再启动服务。
+# 规模由 ENV 的 BENCH_TICKETS / BENCH_DEVICES 控制，compose 里可覆盖。
+CMD ["sh", "-c", "python scripts/gen_benchmark_data.py --tickets $BENCH_TICKETS --devices $BENCH_DEVICES --db /data/loadtest.db && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"]

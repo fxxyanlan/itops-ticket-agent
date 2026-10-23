@@ -6,3 +6,14 @@ data/*.db
 logs/*.log*
 .streamlit/
 .pytest_cache/
+.trae/
+面试准备.md
+
+# JMeter压测结果与报告
+loadtest/report/
+loadtest/*.jtl
+loadtest/*.log
+jmeter.log
+loadtest/*.db
+loadtest/*.db-shm
+loadtest/*.db-wal
