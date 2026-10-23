@@ -17,3 +17,6 @@ jmeter.log
 loadtest/*.db
 loadtest/*.db-shm
 loadtest/*.db-wal
+
+data/*.db-wal
+data/*.db-shm
