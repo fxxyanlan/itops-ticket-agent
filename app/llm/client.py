@@ -80,7 +80,13 @@ class LLMClient:
     # ------------------------------------------------------------------ #
     # 底层：一次真实模型调用
     # ------------------------------------------------------------------ #
-    def _real_chat(self, messages: list[dict], json_mode: bool = False, temperature: float = 0.2) -> str:
+    def _real_chat(
+        self,
+        messages: list[dict],
+        json_mode: bool = False,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+    ) -> str:
         """调用 DeepSeek 并返回文本内容。"""
         kwargs: dict = {
             "model": self.model,
@@ -89,6 +95,8 @@ class LLMClient:
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        if max_tokens:
+            kwargs["max_tokens"] = max_tokens
         response = self._client.chat.completions.create(**kwargs)
         return response.choices[0].message.content or ""
 
@@ -105,6 +113,7 @@ class LLMClient:
                         {"role": "user", "content": f"用户描述：{description}\n联系方式：{contact or '未提供'}"},
                     ],
                     json_mode=True,
+                    max_tokens=400,
                 )
                 data = extract_json(content)
                 if data:
@@ -148,6 +157,7 @@ class LLMClient:
                         },
                     ],
                     json_mode=True,
+                    max_tokens=200,
                 )
                 data = extract_json(content)
                 if "auto_resolvable" in data:
@@ -174,6 +184,7 @@ class LLMClient:
                     tools=tools,
                     tool_choice="auto",
                     temperature=0.2,
+                    max_tokens=250,
                 )
                 message = response.choices[0].message
                 tool_calls: list[ToolCall] = []
@@ -216,6 +227,7 @@ class LLMClient:
                         },
                     ],
                     temperature=0.3,
+                    max_tokens=600,
                 )
                 if content.strip():
                     return content
@@ -240,6 +252,7 @@ class LLMClient:
                         },
                     ],
                     temperature=0.3,
+                    max_tokens=250,
                 )
                 if content.strip():
                     return content
@@ -270,6 +283,7 @@ class LLMClient:
                         },
                     ],
                     json_mode=True,
+                    max_tokens=200,
                 )
                 data = extract_json(content)
                 verdict = str(data.get("verdict") or "").strip().lower()

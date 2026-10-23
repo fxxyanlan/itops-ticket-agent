@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
     llm_mode: str = "auto"  # auto | real | mock
-    llm_timeout: int = 60
+    llm_timeout: int = 15  # 单次模型调用超时（秒），超时即降级为规则，避免拖长 P95
 
     # --- 数据库 ---
     database_url: str = f"sqlite:///{(DATA_DIR / 'itops.db').as_posix()}"
