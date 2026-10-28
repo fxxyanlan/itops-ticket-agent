@@ -16,6 +16,7 @@ from app.agent.state import TicketState
 from app.config import settings
 from app.constants import AGENT_CONTEXT_MARKER, FAULT_TYPE_OTHER, NODE_RESEARCH, NODE_TOOLS
 from app.llm.client import get_llm_client
+from app.services.safety_gate import sanitize_for_llm
 from app.tools.asset_query import run as query_asset
 from app.tools.registry import TOOL_SPECS, dispatch
 from app.tools.ticket_search import run as search_tickets
@@ -96,7 +97,16 @@ def run(state: TicketState) -> dict:
     system_prompt = RESEARCH_SYSTEM_PROMPT.format(
         context_json=json.dumps(agent_context(state), ensure_ascii=False)
     )
-    messages = [{"role": "system", "content": system_prompt}] + list(state.get("messages") or [])
+    # 必须带一条 user 消息：GLM 不接受「只有 system」的消息列表（code 1214）
+    user_prompt = (
+        f"请为工单 #{ticket_id} 收集证据：故障类型 {state.get('fault_type') or FAULT_TYPE_OTHER}，"
+        f"设备编号 {state.get('device_id') or '无'}，问题描述："
+        f"{sanitize_for_llm(state.get('raw_description') or '')}"
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ] + list(state.get("messages") or [])
     response = get_llm_client().chat_with_tools(messages, TOOL_SPECS)
 
     assistant_message: dict = {"role": "assistant", "content": response.content or ""}

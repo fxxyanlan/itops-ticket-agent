@@ -8,12 +8,37 @@
 """
 
 from app.agent.routing import decide, plan_next
+from app.llm.cross_check import CrossCheckResult, merge, need_cross_check
 from app.services.safety_gate import (
     assess_urgency,
     format_urgency_guide,
     more_severe,
     sanitize_for_llm,
 )
+
+
+def test_cross_check_disabled_by_default():
+    """默认关闭时，任何工单都不触发第二个模型。"""
+    state = {"ticket_id": 1, "parse_confidence": 0.85, "best_match_score": 0.5}
+    assert need_cross_check(state)[0] is False
+
+
+def test_cross_check_merge_is_conservative():
+    """任一模型判 human 即转人工；结论一致时保持原判。"""
+    human = CrossCheckResult(status="executed", decision="human", confidence=0.9)
+    auto = CrossCheckResult(status="executed", decision="auto", confidence=0.8)
+    assert merge("auto", human)[0] == "human"
+    assert merge("auto", auto)[0] == "auto"
+    assert merge("human", auto)[0] == "human"
+
+
+def test_cross_check_unavailable_keeps_primary():
+    """复核不可用时按主模型结论继续（降级策略由处置岗决定）。"""
+    unavailable = CrossCheckResult(status="unavailable", decision=None)
+    decision, note, agreement = merge("auto", unavailable)
+    assert decision == "auto"
+    assert agreement is None
+    assert "不可用" in note
 
 
 def test_fire_keyword_triggers_p0_fast_path():
@@ -43,6 +68,13 @@ def test_negated_smoke_does_not_trigger():
 
 def test_smoke_test_term_does_not_trigger():
     assessment = assess_urgency("冒烟测试环境跑一下打印机的联调")
+    assert assessment.level != "P0"
+    assert assessment.fast_path is False
+
+
+def test_negated_real_smoke_does_not_trigger():
+    """「不是真冒烟」这类口头否定不应触发 P0 快速通道。"""
+    assessment = assess_urgency("冒烟测试环境跑一下打印机的联调，不是真冒烟")
     assert assessment.level != "P0"
     assert assessment.fast_path is False
 

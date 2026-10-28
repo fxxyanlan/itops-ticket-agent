@@ -13,6 +13,7 @@ from app.config import settings
 from app.constants import MODE_HUMAN, STATUS_HUMAN, STATUS_RESOLVED
 from app.db.base import probe_db
 from app.logging_config import get_logger
+from app.llm.router import TASK_MODEL
 from app.schemas.ticket import ApiResponse, TicketCreate, TicketStatusFilter, TicketTaskStatus
 from app.services import cache, metrics, task_registry, ticket_service
 from app.services.agent_runner import run_agent
@@ -47,6 +48,8 @@ def health() -> ApiResponse:
             "status": "ok" if db_status == "ok" else "degraded",
             "llm_mode": settings.effective_llm_mode,
             "model": settings.deepseek_model,
+            "glm_model": settings.glm_model if settings.glm_api_key else None,
+            "model_routes": dict(TASK_MODEL),
             "database": db_status,
             "match_threshold": settings.match_threshold,
             "confidence_threshold": settings.confidence_threshold,

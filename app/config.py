@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     default_log_limit: int = 500  # 日志接口默认返回条数
     expose_error_detail: bool = False  # 是否向客户端回显原始异常文本（生产应关闭）
 
+    # --- 双模型：DeepSeek（推理/结构化）+ GLM（自然语言生成）---
+    glm_api_key: str = ""
+    glm_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    glm_model: str = "glm-4-air"
+    glm_timeout: int = 15  # 生成类任务文本较长，超时留足余量
+    glm_max_tokens: int = 800  # 思考型模型会先消耗思考 token，需留余量
+
+    # --- 交叉验证（GLM 复核灰区工单）---
+    cross_check_enabled: bool = False  # 默认关闭，配置好 GLM 后再打开
+    cross_check_min_confidence: float = 0.6  # 低于此值已经是转人工，不再复核
+    cross_check_max_confidence: float = 0.75  # 不高于此值视为灰区，需要复核
+    cross_check_gray_score_max: float = 0.55  # 匹配度落在 [阈值, 该值] 视为边缘，需要复核
+    cross_check_sample_rate: float = 0.05  # 高置信自动闭环单的抽样复核比例
+
     # --- 日志 ---
     log_level: str = "INFO"
 

@@ -1,11 +1,11 @@
-"""DeepSeek 客户端（OpenAI 兼容协议）。
+"""统一 LLM 入口：按任务类型路由到 DeepSeek / GLM，并统一降级到规则实现。
 
 两种模式：
-- real：调用 DeepSeek Chat Completions，支持 `response_format=json_object` 与原生 `tools`；
-- mock：走 `app.llm.mock` 的规则实现，无需 API Key。
+- real：解析/分类/工具规划/审核走 DeepSeek，方案与通知生成走 GLM；
+  单个模型异常时自动切到另一模型，两者都不可用时降级到 mock；
+- mock：直接走 `app.llm.mock` 的规则实现，无需 API Key。
 
 对外方法签名在两种模式下完全一致，上层（LangGraph 节点）无需分支判断。
-真实调用失败时自动降级到 mock，保证流程不中断（记录 WARN 日志）。
 """
 
 from functools import lru_cache
@@ -13,6 +13,7 @@ from functools import lru_cache
 from app.config import settings
 from app.constants import FAULT_TYPES, FAULT_TYPE_OTHER, URGENCIES, URGENCY_DEFAULT
 from app.llm import mock
+from app.llm.router import ModelRouter, RouteResult
 from app.llm.schemas import ClassifyResult, LLMResponse, ReviewResult, TicketParseResult, ToolCall, extract_json
 from app.logging_config import get_logger
 from app.services.safety_gate import clamp_confidence, format_urgency_guide
@@ -61,72 +62,69 @@ confidence 表示你对本次审核结论的把握，依据不足时给 0.5 以�
 
 
 class LLMClient:
-    """统一的 LLM 调用入口。"""
+    """统一的 LLM 调用入口（内部按任务路由到不同模型）。"""
 
     def __init__(self) -> None:
         self.mode = settings.effective_llm_mode
-        self.model = settings.deepseek_model
-        self._client = None
+        self._router: ModelRouter | None = None
         if self.mode == "real":
-            try:
-                from openai import OpenAI
-
-                self._client = OpenAI(
-                    api_key=settings.deepseek_api_key,
-                    base_url=settings.deepseek_base_url,
-                    timeout=settings.llm_timeout,
-                )
-                logger.info("LLM 模式：real（模型 %s）", self.model)
-            except Exception as exc:  # noqa: BLE001  依赖缺失或初始化失败 → 降级
-                logger.error("初始化 DeepSeek 客户端失败，降级为 mock：%s", exc)
-                self.mode = "mock"
+            self._router = ModelRouter()
+            logger.info(
+                "LLM 模式：real（推理模型 %s｜生成模型 %s）",
+                self._router.model_name("deepseek") or "未配置",
+                self._router.model_name("glm") or "未配置",
+            )
         else:
             logger.info("LLM 模式：mock（离线规则，无需 API Key）")
 
     # ------------------------------------------------------------------ #
-    # 底层：一次真实模型调用
+    # 底层：按任务路由一次调用；失败返回 None，由调用方降级
     # ------------------------------------------------------------------ #
-    def _real_chat(
+    def _call(
         self,
+        task: str,
         messages: list[dict],
+        *,
         json_mode: bool = False,
         temperature: float = 0.2,
         max_tokens: int | None = None,
-    ) -> str:
-        """调用 DeepSeek 并返回文本内容。"""
-        kwargs: dict = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-        }
-        if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
-        if max_tokens:
-            kwargs["max_tokens"] = max_tokens
-        response = self._client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content or ""
+        tools: list[dict] | None = None,
+    ) -> RouteResult | None:
+        """按任务分发到对应模型；任何异常都降级为 None（交给规则实现）。"""
+        if self.mode != "real" or self._router is None:
+            return None
+        try:
+            return self._router.chat(
+                task,
+                messages,
+                json_mode=json_mode,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error("任务 %s 模型调用失败，降级为规则实现：%s", task, exc)
+            return None
 
     # ------------------------------------------------------------------ #
     # 1) 工单解析
     # ------------------------------------------------------------------ #
     def extract_ticket(self, description: str, contact: str | None = None) -> TicketParseResult:
-        """抽取工单字段；失败时降级为规则解析。"""
-        if self.mode == "real":
-            try:
-                content = self._real_chat(
-                    [
-                        {"role": "system", "content": PARSE_SYSTEM_PROMPT},
-                        {"role": "user", "content": f"用户描述：{description}\n联系方式：{contact or '未提供'}"},
-                    ],
-                    json_mode=True,
-                    max_tokens=550,
-                )
-                data = extract_json(content)
-                if data:
-                    return self._normalize_parse(data, description, contact)
-                logger.warning("解析结果为空，降级为规则解析")
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型解析失败，降级为规则解析：%s", exc)
+        """抽取工单字段（DeepSeek）；失败或空结果时降级为规则解析。"""
+        result = self._call(
+            "parse",
+            [
+                {"role": "system", "content": PARSE_SYSTEM_PROMPT},
+                {"role": "user", "content": f"用户描述：{description}\n联系方式：{contact or '未提供'}"},
+            ],
+            json_mode=True,
+            max_tokens=550,
+        )
+        if result is not None:
+            data = extract_json(result.content)
+            if data:
+                return self._normalize_parse(data, description, contact)
+            logger.warning("解析结果为空，降级为规则解析")
         return mock.parse_ticket(description, contact)
 
     @staticmethod
@@ -153,63 +151,41 @@ class LLMClient:
     # 2) 意图 & 故障分类
     # ------------------------------------------------------------------ #
     def classify(self, parsed: TicketParseResult, description: str = "") -> ClassifyResult:
-        """判断「可自动解决 / 必须人工处理」。"""
-        if self.mode == "real":
-            try:
-                content = self._real_chat(
-                    [
-                        {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"故障类型：{parsed.fault_type}\n紧急等级：{parsed.urgency}\n"
-                                f"用户描述：{description or parsed.summary}"
-                            ),
-                        },
-                    ],
-                    json_mode=True,
-                    max_tokens=200,
+        """判断「可自动解决 / 必须人工处理」（DeepSeek）。"""
+        result = self._call(
+            "classify",
+            [
+                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"故障类型：{parsed.fault_type}\n紧急等级：{parsed.urgency}\n"
+                        f"用户描述：{description or parsed.summary}"
+                    ),
+                },
+            ],
+            json_mode=True,
+            max_tokens=200,
+        )
+        if result is not None:
+            data = extract_json(result.content)
+            if "auto_resolvable" in data:
+                return ClassifyResult(
+                    auto_resolvable=bool(data["auto_resolvable"]),
+                    reason=str(data.get("reason") or ""),
+                    confidence=clamp_confidence(data.get("confidence")),
                 )
-                data = extract_json(content)
-                if "auto_resolvable" in data:
-                    return ClassifyResult(
-                        auto_resolvable=bool(data["auto_resolvable"]),
-                        reason=str(data.get("reason") or ""),
-                        confidence=clamp_confidence(data.get("confidence")),
-                    )
-                logger.warning("分类结果缺少 auto_resolvable，降级为规则分类")
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型分类失败，降级为规则分类：%s", exc)
+            logger.warning("分类结果缺少 auto_resolvable，降级为规则分类")
         return mock.classify(parsed, description)
 
     # ------------------------------------------------------------------ #
     # 3) 原生 Function Calling
     # ------------------------------------------------------------------ #
     def chat_with_tools(self, messages: list[dict], tools: list[dict] | None = None) -> LLMResponse:
-        """携带工具声明调用模型，返回归一化的 tool_calls。"""
-        if self.mode == "real":
-            try:
-                response = self._client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                    temperature=0.2,
-                    max_tokens=250,
-                )
-                message = response.choices[0].message
-                tool_calls: list[ToolCall] = []
-                for call in message.tool_calls or []:
-                    tool_calls.append(
-                        ToolCall(
-                            id=call.id,
-                            name=call.function.name,
-                            arguments=extract_json(call.function.arguments) or {},
-                        )
-                    )
-                return LLMResponse(content=message.content or "", tool_calls=tool_calls)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型工具调用失败，降级为规则决策：%s", exc)
+        """携带工具声明调用模型（DeepSeek），返回归一化的 tool_calls。"""
+        result = self._call("tools", messages, max_tokens=250, tools=tools)
+        if result is not None:
+            return LLMResponse(content=result.content, tool_calls=result.tool_calls)
         return mock.chat_with_tools(messages, tools)
 
     # ------------------------------------------------------------------ #
@@ -218,57 +194,51 @@ class LLMClient:
     def generate_resolution(
         self, context: dict, matches: list[dict], device: dict | None = None
     ) -> str:
-        """生成自动闭环的解决步骤（Markdown）。"""
-        if self.mode == "real":
-            try:
-                history = "\n".join(
-                    f"- #{m['ticket_id']}《{m['title']}》匹配度{m['score']}：{m['resolution']}"
-                    for m in (matches or [])[:3]
-                )
-                content = self._real_chat(
-                    [
-                        {"role": "system", "content": RESOLUTION_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"工单：{context.get('title')}\n故障类型：{context.get('fault_type')}\n"
-                                f"问题描述：{context.get('description')}\n"
-                                f"设备信息：{device or '未查到'}\n历史工单：\n{history or '无'}"
-                            ),
-                        },
-                    ],
-                    temperature=0.3,
-                    max_tokens=600,
-                )
-                if content.strip():
-                    return content
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型生成方案失败，降级为模板：%s", exc)
+        """生成自动闭环的解决步骤（GLM，长文本生成）。"""
+        history = "\n".join(
+            f"- #{m['ticket_id']}《{m['title']}》匹配度{m['score']}：{m['resolution']}"
+            for m in (matches or [])[:3]
+        )
+        result = self._call(
+            "resolution",
+            [
+                {"role": "system", "content": RESOLUTION_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"工单：{context.get('title')}\n故障类型：{context.get('fault_type')}\n"
+                        f"问题描述：{context.get('description')}\n"
+                        f"设备信息：{device or '未查到'}\n历史工单：\n{history or '无'}"
+                    ),
+                },
+            ],
+            temperature=0.3,
+            max_tokens=600,
+        )
+        if result is not None and result.content.strip():
+            return result.content
         return mock.generate_resolution(context, matches, device)
 
     def generate_notification(self, context: dict, assignee: dict, reason: str) -> str:
-        """生成转人工通知消息。"""
-        if self.mode == "real":
-            try:
-                content = self._real_chat(
-                    [
-                        {"role": "system", "content": NOTIFY_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"工单号：#{context.get('ticket_id')}，标题：{context.get('title')}，"
-                                f"紧急等级：{context.get('urgency')}，故障类型：{context.get('fault_type')}，"
-                                f"转人工原因：{reason}，分派工程师：{assignee}"
-                            ),
-                        },
-                    ],
-                    temperature=0.3,
-                    max_tokens=250,
-                )
-                if content.strip():
-                    return content
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型生成通知失败，降级为模板：%s", exc)
+        """生成转人工通知消息（GLM，对话式表达）。"""
+        result = self._call(
+            "notification",
+            [
+                {"role": "system", "content": NOTIFY_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"工单号：#{context.get('ticket_id')}，标题：{context.get('title')}，"
+                        f"紧急等级：{context.get('urgency')}，故障类型：{context.get('fault_type')}，"
+                        f"转人工原因：{reason}，分派工程师：{assignee}"
+                    ),
+                },
+            ],
+            temperature=0.3,
+            max_tokens=250,
+        )
+        if result is not None and result.content.strip():
+            return result.content
         return mock.generate_notification(context, assignee, reason)
 
     # ------------------------------------------------------------------ #
@@ -277,36 +247,34 @@ class LLMClient:
     def review_resolution(
         self, context: dict, resolution: str, matches: list[dict], device: dict | None = None
     ) -> ReviewResult:
-        """对自动闭环方案做交叉审核，返回 pass / reject。"""
-        if self.mode == "real":
-            try:
-                history = "、".join(f"#{m['ticket_id']}" for m in (matches or [])[:3]) or "无"
-                content = self._real_chat(
-                    [
-                        {"role": "system", "content": CRITIC_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"工单：{context.get('title')}\n故障类型：{context.get('fault_type')}\n"
-                                f"问题描述：{context.get('description')}\n设备信息：{device or '未查到'}\n"
-                                f"依据的历史工单：{history}\n待审核方案：\n{resolution or '（空）'}"
-                            ),
-                        },
-                    ],
-                    json_mode=True,
-                    max_tokens=200,
+        """对自动闭环方案做交叉审核（DeepSeek），返回 pass / reject。"""
+        history = "、".join(f"#{m['ticket_id']}" for m in (matches or [])[:3]) or "无"
+        result = self._call(
+            "review",
+            [
+                {"role": "system", "content": CRITIC_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"工单：{context.get('title')}\n故障类型：{context.get('fault_type')}\n"
+                        f"问题描述：{context.get('description')}\n设备信息：{device or '未查到'}\n"
+                        f"依据的历史工单：{history}\n待审核方案：\n{resolution or '（空）'}"
+                    ),
+                },
+            ],
+            json_mode=True,
+            max_tokens=200,
+        )
+        if result is not None:
+            data = extract_json(result.content)
+            verdict = str(data.get("verdict") or "").strip().lower()
+            if verdict in ("pass", "reject"):
+                return ReviewResult(
+                    verdict=verdict,
+                    feedback=str(data.get("feedback") or ""),
+                    confidence=clamp_confidence(data.get("confidence")),
                 )
-                data = extract_json(content)
-                verdict = str(data.get("verdict") or "").strip().lower()
-                if verdict in ("pass", "reject"):
-                    return ReviewResult(
-                        verdict=verdict,
-                        feedback=str(data.get("feedback") or ""),
-                        confidence=clamp_confidence(data.get("confidence")),
-                    )
-                logger.warning("审核结论非法（%s），降级为规则审核", verdict)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("模型审核失败，降级为规则审核：%s", exc)
+            logger.warning("审核结论非法（%s），降级为规则审核", verdict)
         return mock.review_resolution(context, resolution, matches, device)
 
 

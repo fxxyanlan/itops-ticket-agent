@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 TEST_DB = ROOT / "data" / "test_api.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 os.environ["LLM_MODE"] = "mock"  # 离线可复现，不依赖真实 API Key
+os.environ["CROSS_CHECK_ENABLED"] = "false"  # 测试不调用第二个模型，避免真实网络请求
 # -----------------------------------
 
 import pytest  # noqa: E402

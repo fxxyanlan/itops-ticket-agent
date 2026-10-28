@@ -18,6 +18,7 @@ from app.constants import (
     STATUS_RESOLVED,
 )
 from app.llm.client import get_llm_client
+from app.llm.cross_check import merge, need_cross_check, run_cross_check, state_patch
 from app.services import ticket_service
 
 NAME = "resolver"
@@ -26,11 +27,39 @@ DESCRIPTION = "根据确定性判定生成最终处置结果：自动闭环方�
 
 
 def run(state: TicketState) -> dict:
-    """执行处置：自动闭环或转人工。"""
+    """执行处置：灰区工单先做交叉验证，再按合并后的结论处置。"""
     decision, reason = decide(state)
+    cross_patch: dict = {}
+    cross_log = ""
+
+    triggered, trigger_reason = need_cross_check(state)
+    if triggered:
+        check = run_cross_check(state, trigger_reason)
+        merged, note, agreement = merge(decision, check)
+        if check.status == "unavailable" and decision == "auto":
+            # 灰区复核失败时不冒险自动闭环
+            merged = "human"
+            note = "复核不可用，灰区自动闭环降级为转人工"
+        if merged != decision:
+            reason = note
+        cross_patch = state_patch(check, merged, note, agreement)
+        cross_log = (
+            f"交叉验证[{trigger_reason}]：{check.status}"
+            f"｜复核={check.decision or '无'}｜一致={agreement}"
+            f"｜耗时={check.elapsed_ms}ms｜{note}"
+        )
+        write_agent_log(
+            int(state["ticket_id"]),
+            LABEL,
+            cross_log,
+            level="INFO" if cross_patch.get("cross_check_agreement") else "WARN",
+            detail={**cross_patch, "primary_decision": decision},
+        )
+        decision = merged
+
     if decision == "auto":
-        return _auto_resolve(state, reason)
-    return _escalate_human(state, reason)
+        return {**_auto_resolve(state, reason), **cross_patch}
+    return {**_escalate_human(state, reason), **cross_patch}
 
 
 def _auto_resolve(state: TicketState, reason: str) -> dict:

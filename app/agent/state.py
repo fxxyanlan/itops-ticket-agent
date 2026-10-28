@@ -53,6 +53,17 @@ class TicketState(TypedDict, total=False):
     notify_message: str | None
     final_status: str | None
 
+    # --- 交叉验证（第二个模型复核灰区工单）---
+    cross_check_status: str | None  # executed | skipped | unavailable
+    cross_check_trigger: str | None  # 触发原因（灰区/边缘/抽样）
+    cross_check_decision: str | None  # auto | human
+    cross_check_confidence: float | None
+    cross_check_reason: str | None
+    cross_check_model: str | None
+    cross_check_elapsed_ms: int | None
+    cross_check_agreement: bool | None  # 与主模型结论是否一致
+    cross_check_notes: list[str]  # 复核风险提示
+
     # --- 多 Agent 协作（Supervisor 编排）---
     next_agent: str | None  # 调度中枢决定的下一步 agent
     agent_trace: Annotated[list[dict], operator.add]  # 各 Agent 的协作轨迹
@@ -114,6 +125,15 @@ def public_snapshot(state: dict) -> dict[str, Any]:
         "critic_verdict",
         "review_rounds",
         "iterations",
+        "cross_check_status",
+        "cross_check_trigger",
+        "cross_check_decision",
+        "cross_check_confidence",
+        "cross_check_reason",
+        "cross_check_model",
+        "cross_check_elapsed_ms",
+        "cross_check_agreement",
+        "cross_check_notes",
     )
     snapshot = {key: state.get(key) for key in keys}
     snapshot["matched_count"] = len(state.get("matched_solutions") or [])
